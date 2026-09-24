@@ -17,6 +17,7 @@ const icon = (name, cls = '') => `<svg class="icon ${cls}" viewBox="0 0 24 24" f
 const number = (n, decimals = 0) => new Intl.NumberFormat('es-UY', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(n);
 const usd = n => `USD ${number(n, 2)}`;
 const escape = text => String(text).replace(/[&<>"']/g, s => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[s]));
+const dataUruguayLogo = () => `<span class="datauruguay-brand"><svg class="datauruguay-mark" viewBox="0 0 32 32" aria-hidden="true"><rect x="1" y="1" width="30" height="30" rx="8" fill="#1599d3"/><text x="16" y="21" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="12" font-weight="700">du</text></svg><span class="datauruguay-wordmark"><span>datos</span><span>Uruguay</span></span></span>`;
 
 let priceText = '165000';
 let currencyIndex = 0;
@@ -149,14 +150,15 @@ function configControl(field, value, index) {
   }
   const input = `<div class="config-input-wrap"><input id="${id}" data-config-index="${index}" type="number" inputmode="decimal" value="${escape(controlValue)}" min="${field.min}"${field.max === undefined ? '' : ` max="${field.max}"`} step="${field.step}" aria-describedby="${descriptionId} ${errorId}" aria-invalid="false" /><span class="config-unit">${escape(field.unit)}</span></div>`;
   if (!quotationSources[field.key]) return input;
-  return `<div class="config-number-control">${input}<button class="refresh-quotation" type="button" data-update-quotation="${field.key}">Actualizar desde Datos Uruguay</button><span class="quotation-update-status" data-quotation-status="${field.key}" role="status" aria-live="polite"></span></div>`;
+  const ariaLabel = field.key === 'usdUyu' ? 'Actualizar cotización de venta BROU desde Datos Uruguay' : 'Actualizar cotización de la UI desde Datos Uruguay';
+  return `<div class="config-number-control">${input}<button class="refresh-quotation" type="button" aria-label="${ariaLabel}" data-update-quotation="${field.key}">Actualizar desde ${dataUruguayLogo()}</button><span class="quotation-update-status" data-quotation-status="${field.key}" role="status" aria-live="polite"></span></div>`;
 }
 
 function renderSettings() {
   main.innerHTML = `<section class="intro settings-intro"><p class="eyebrow">LAS BASES DE TU SIMULACIÓN</p><h1>Cada número,<br>en su lugar<span>.</span></h1><p>Estos son los valores que usa tu calculadora.</p></section>
     <div class="settings-layout"><aside class="settings-aside"><div class="settings-aside-icon">${icon('settings')}</div><h2>Una configuración.<br>Todas tus cuentas.</h2><p>Editá los valores que quieras. Se guardan en este navegador y se aplican enseguida a tus cálculos. Podés volver a los valores predeterminados cuando quieras.</p><p class="storage-note">${escape(userConfig.storageError || 'Tus cambios se guardan solo en este navegador y dispositivo.')}</p><button class="reset-config" id="reset-config" type="button">Restablecer valores predeterminados</button><div id="config-status" class="config-status" role="status" aria-live="polite"></div><a class="back-link" href="#calculadora">${icon('arrow', 'reversed')} Volver a calcular</a></aside>
     <section class="card settings-card" aria-label="Valores de configuración">${configFields.map((field, index) => `<div class="setting-row"><div class="setting-copy"><label for="config-field-${index}">${escape(field.label)}</label><p id="config-field-${index}-description">${escape(field.description)}</p><p class="config-error" id="config-field-${index}-error" role="alert"></p></div><div class="setting-control">${configControl(field, effectiveConfig[field.key], index)}</div></div>`).join('')}</section></div>
-    <section class="quotation-source-card"><div><strong>Cotizaciones desde Datos Uruguay</strong><p>La UI y el dólar usan datos diarios del BCU publicados por Datos Uruguay.</p></div><a href="https://datosuruguay.com/api" target="_blank" rel="noopener noreferrer">Datos Uruguay · atribución CC BY 4.0</a></section>
+    <section class="quotation-source-card"><div><strong>Fuente de cotizaciones</strong><a class="datauruguay-brand-link" href="https://datosuruguay.com/api" target="_blank" rel="noopener noreferrer" aria-label="Datos Uruguay, API y atribución CC BY 4.0">${dataUruguayLogo()}</a><p>La UI proviene del BCU y el dólar usa la venta BROU, consultados mediante esta fuente.</p><div class="quotation-source-links"><a href="https://datosuruguay.com/ui?utm_source=api&utm_medium=attribution&utm_campaign=backlinks" target="_blank" rel="noopener noreferrer">UI · BCU</a><a href="https://datosuruguay.com/dolar?utm_source=api&utm_medium=attribution&utm_campaign=backlinks" target="_blank" rel="noopener noreferrer">Dólar · venta BROU</a></div></div></section>
     <section class="bottom-note">${icon('info')}<p>Los valores por defecto provienen de simulación de créditos hipotecarios en la web</p></section>`;
   document.querySelectorAll('[data-config-index]').forEach(control => {
     const field = configFields[Number(control.dataset.configIndex)];
@@ -184,7 +186,7 @@ async function refreshQuotation(field, button) {
   const input = document.querySelector(`[data-config-index="${configFields.indexOf(field)}"]`);
   button.disabled = true;
   button.setAttribute('aria-busy', 'true');
-  status.textContent = 'Consultando Datos Uruguay…';
+    status.textContent = 'Consultando la fuente de cotizaciones…';
   try {
     const quote = await fetchLatestQuotation(field.key);
     const updated = updateUserConfig(config, configFields, userConfig.overrides, field.key, quote.value);
@@ -194,8 +196,12 @@ async function refreshQuotation(field, button) {
     input.value = String(quote.value);
     input.setAttribute('aria-invalid', 'false');
     document.querySelector(`#config-field-${configFields.indexOf(field)}-error`).textContent = '';
-    const formattedDate = new Intl.DateTimeFormat('es-UY', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${quote.date}T00:00:00Z`));
-    status.textContent = `Actualizada desde Datos Uruguay · dato del ${formattedDate}.${updated.storageError ? ` ${updated.storageError}` : ''}`;
+    const date = new Date(quote.date.includes('T') ? quote.date : `${quote.date}T00:00:00Z`);
+    const formattedDay = new Intl.DateTimeFormat('es-UY', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' }).format(date);
+    const formattedTime = quote.date.includes('T') ? ` ${new Intl.DateTimeFormat('es-UY', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'UTC' }).format(date)} UTC` : '';
+    const brandedSource = `<a class="datauruguay-brand-link" href="${escape(quote.attributionUrl)}" target="_blank" rel="noopener noreferrer" aria-label="Datos Uruguay, fuente del dato">${dataUruguayLogo()}</a>`;
+    const rateLabel = field.key === 'usdUyu' ? 'Venta BROU' : 'UI del BCU';
+    status.innerHTML = `${rateLabel} actualizada · dato del ${formattedDay}${formattedTime} · ${brandedSource}${updated.storageError ? ` ${escape(updated.storageError)}` : ''}`;
     if (!updated.storageError) announce('Cotización actualizada y guardada en este navegador.');
   } catch (error) {
     status.textContent = error.message;

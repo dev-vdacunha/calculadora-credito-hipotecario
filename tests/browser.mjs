@@ -34,9 +34,9 @@ try {
     status: 200, contentType: 'application/json',
     body: JSON.stringify({ data: [{ date: invalidUiResponse ? 'not-a-date' : '2026-09-24', value: 6.6537 }], meta: { source: 'BCU', unit: 'UYU/UI' } }),
   }));
-  await page.route('https://datosuruguay.com/api/v1/exchange-rates/usd?limit=1', route => route.fulfill({
+  await page.route('https://datosuruguay.com/api/v1/exchange-rates/usd/quote', route => route.fulfill({
     status: 200, contentType: 'application/json',
-    body: JSON.stringify({ data: [{ date: '2026-09-23', value: 40.049 }], meta: { source: 'BCU', unit: 'UYU/USD' } }),
+    body: JSON.stringify({ data: { currency: 'usd', bank: 'BROU', buy: 39.45, sell: 40.85, average: 40.15, as_of: '2026-09-23T23:11:02Z' }, meta: { source: 'BROU', unit: 'UYU/USD' } }),
   }));
 
   assert.equal(await page.locator('#property-title').innerText(), 'Ingresar el valor del inmueble');
@@ -83,22 +83,26 @@ try {
   assert.match(settingsText, /Ahorros disponibles/);
   assert.match(settingsText, /Tasa efectiva anual/);
   assert.equal(await page.locator('#config-field-9').inputValue(), '1.414872');
-  assert.match(await page.locator('.quotation-source-card').innerText(), /Datos Uruguay/);
-  assert.equal(await page.locator('.quotation-source-card a').getAttribute('href'), 'https://datosuruguay.com/api');
+  assert.match(await page.locator('.quotation-source-card').innerText(), /datos\s*Uruguay/);
+  assert.equal(await page.locator('.quotation-source-card .datauruguay-brand-link').getAttribute('href'), 'https://datosuruguay.com/api');
+  assert.equal(await page.locator('.quotation-source-links a').count(), 2);
+  assert.equal(await page.locator('.datauruguay-brand').count(), 3);
+  assert.match(await page.locator('.setting-row').nth(7).innerText(), /venta BROU/i);
   assert.equal(await page.locator('#config-field-6').evaluate(el => getComputedStyle(el).textAlign), 'right');
   assert.equal(await page.locator('#config-field-7').evaluate(el => getComputedStyle(el).textAlign), 'right');
-  await page.getByRole('button', { name: 'Actualizar desde Datos Uruguay' }).nth(0).click();
+  await page.locator('[data-update-quotation="uiUyu"]').click();
   await page.waitForFunction(() => document.querySelector('[data-quotation-status="uiUyu"]').textContent.includes('24/09/2026'));
   assert.equal(await page.locator('#config-field-6').inputValue(), '6.6537');
   assert.match(await page.locator('[data-quotation-status="uiUyu"]').innerText(), /24\/09\/2026/);
   assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('calculadora-credito-hipotecario.config.v1'))), { uiUyu: 6.6537 });
-  await page.getByRole('button', { name: 'Actualizar desde Datos Uruguay' }).nth(1).click();
+  await page.locator('[data-update-quotation="usdUyu"]').click();
   await page.waitForFunction(() => document.querySelector('[data-quotation-status="usdUyu"]').textContent.includes('23/09/2026'));
-  assert.equal(await page.locator('#config-field-7').inputValue(), '40.049', await page.locator('[data-quotation-status="usdUyu"]').innerText());
-  assert.match(await page.locator('[data-quotation-status="usdUyu"]').innerText(), /23\/09\/2026/);
-  assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('calculadora-credito-hipotecario.config.v1'))), { uiUyu: 6.6537, usdUyu: 40.049 });
+  assert.equal(await page.locator('#config-field-7').inputValue(), '40.85', await page.locator('[data-quotation-status="usdUyu"]').innerText());
+  assert.match(await page.locator('[data-quotation-status="usdUyu"]').innerText(), /23\/09\/2026.*23:11 UTC/);
+  assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('calculadora-credito-hipotecario.config.v1'))), { uiUyu: 6.6537, usdUyu: 40.85 });
+  assert.equal(await page.locator('.datauruguay-brand').count(), 5);
   invalidUiResponse = true;
-  await page.getByRole('button', { name: 'Actualizar desde Datos Uruguay' }).nth(0).click();
+  await page.locator('[data-update-quotation="uiUyu"]').click();
   await page.waitForFunction(() => document.querySelector('[data-quotation-status="uiUyu"]').textContent.includes('no devolvió una cotización válida'));
   assert.equal(await page.locator('#config-field-6').inputValue(), '6.6537');
   assert.match(await page.locator('[data-quotation-status="uiUyu"]').innerText(), /fecha/i);

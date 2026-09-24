@@ -4,7 +4,7 @@
 
 La configuración tiene defaults en `src/config.js` y overrides parciales en `localStorage` bajo `calculadora-credito-hipotecario.config.v1`. La pantalla permite editar los doce parámetros activos, muestra solo nombres y descripciones humanas, y ofrece restablecer los defaults. `maxLoanUsd` y `financingLimitBasis` fueron eliminados. El máximo del vale es siempre precio × financiación máxima (85%). Las cuotas se muestran aunque falte efectivo, usando el préstamo máximo disponible.
 
-UI y dólar pueden actualizarse manualmente en Configuración desde los endpoints diarios de Datos Uruguay para las series del BCU. Cada botón solo altera su propia cotización, guarda el override local y muestra la fecha efectiva; ante error se conserva el valor previo. La tarjeta de la fuente proporciona enlace y atribución CC BY 4.0.
+La UI puede actualizarse manualmente desde la serie diaria del BCU de Datos Uruguay. El dólar usa el endpoint de cotización BROU y siempre toma `data.sell` (venta), nunca compra ni promedio. Cada botón solo altera su propia cotización, guarda el override local y muestra la fecha efectiva o timestamp de la API; ante error se conserva el valor previo. Los botones, la tarjeta y los estados de éxito muestran un wordmark SVG inline «du datosUruguay». La tarjeta enlaza a la API y a las páginas de cada serie con atribución CC BY 4.0.
 
 ## Ajustes vigentes del 24 de septiembre de 2026
 

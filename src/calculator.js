@@ -1,7 +1,7 @@
 export const TERMS = Object.freeze([10, 15, 20, 25, 30]);
 
 export function validateConfig(c) {
-  const nonnegative = ['savingsUsd', 'teaPercent', 'vatPercent', 'notaryPercent', 'agencyPercent', 'administrationUsd', 'fireInsuranceUsd', 'lifeInsuranceAnnualPercent'];
+  const nonnegative = ['savingsUsd', 'teaPercent', 'vatPercent', 'notaryPercent', 'agencyPercent', 'administrationUsd', 'fireInsurancePercent', 'lifeInsuranceAnnualPercent', 'maxLoanUsd'];
   for (const key of [...nonnegative, 'maxFinancingPercent', 'uiUyu', 'usdUyu']) {
     if (typeof c[key] !== 'number' || !Number.isFinite(c[key]) || c[key] < 0) throw new Error(`Configuración inválida: ${key} debe ser un número finito no negativo.`);
   }
@@ -31,11 +31,29 @@ function fees(price, c) {
 /** Desglosa un vale ofrecido por el banco, sin sustituirlo por el máximo teórico. */
 export function bankBreakdown(price, gross, c) {
   const { notary, agency } = fees(price, c);
-  const costs = c.administrationUsd + c.fireInsuranceUsd;
+  const costs = c.administrationUsd + price * c.fireInsurancePercent / 100;
   const net = gross - (c.bankCostsPayment === 'financed' ? costs : 0);
   const downPayment = price - net;
   const cashRequired = downPayment + notary + agency + (c.bankCostsPayment === 'cash' ? costs : 0);
   return { net, downPayment, cashRequired, shortfall: Math.max(0, cashRequired - c.savingsUsd) };
+}
+
+/** Máximo por efectivo y límites del préstamo; no evalúa ingresos ni aprobación bancaria. */
+export function maximumPropertyPrice(c) {
+  validateConfig(c);
+  const honorarios = (c.notaryPercent + c.agencyPercent) / 100 * (1 + c.vatPercent / 100);
+  const incendio = c.fireInsurancePercent / 100;
+  const cashMaximum = c.savingsUsd / (1 + honorarios);
+  // Si el límite es sobre líquido y se financian los cargos, estos no reducen
+  // el porcentaje de compra cubierto, aunque sí consumen el tope del vale.
+  const netLimit = c.financingLimitBasis === 'net' && c.bankCostsPayment === 'financed';
+  const upfront = netLimit ? 0 : c.administrationUsd;
+  const share = (100 - c.maxFinancingPercent) / 100 + honorarios + (netLimit ? 0 : incendio);
+  const byPercent = share === 0 ? (c.savingsUsd >= upfront ? Infinity : 0) : (c.savingsUsd - upfront) / share;
+  const byCap = c.maxLoanUsd === 0 ? Infinity : (c.savingsUsd + c.maxLoanUsd - c.administrationUsd) / (1 + honorarios + incendio);
+  const maximum = Math.max(cashMaximum, Math.max(0, Math.min(byPercent, byCap)));
+  // No redondear hacia arriba y recomendar un precio que exceda los ahorros.
+  return Math.floor(maximum * 100) / 100;
 }
 
 export function calculate(price, c) {
@@ -44,7 +62,8 @@ export function calculate(price, c) {
   const { notary, agency } = fees(price, c);
   const feesTotal = notary + agency;
   const cashPurchase = c.savingsUsd >= price + feesTotal;
-  const bankCosts = cashPurchase ? 0 : c.administrationUsd + c.fireInsuranceUsd;
+  const fireInsurance = cashPurchase ? 0 : price * c.fireInsurancePercent / 100;
+  const bankCosts = cashPurchase ? 0 : c.administrationUsd + fireInsurance;
   const upfrontBankCosts = c.bankCostsPayment === 'cash' ? bankCosts : 0;
   const financedCosts = c.bankCostsPayment === 'financed' ? bankCosts : 0;
   const available = c.savingsUsd - feesTotal - upfrontBankCosts;
@@ -52,21 +71,26 @@ export function calculate(price, c) {
   const netRequired = price - downPayment;
   const grossRequired = cashPurchase ? 0 : netRequired + financedCosts;
   const limit = price * c.maxFinancingPercent / 100;
-  const grossMaximum = c.financingLimitBasis === 'gross' ? limit : limit + financedCosts;
-  const netMaximum = Math.max(0, c.financingLimitBasis === 'net' ? limit : limit - financedCosts);
-  // When borrowing provides no useful funds, the cheapest feasible alternative is buying in cash.
-  const cashRequired = cashPurchase ? price + feesTotal : Math.min(price + feesTotal, feesTotal + upfrontBankCosts + price - netMaximum);
+  const percentageMaximum = c.financingLimitBasis === 'gross' ? limit : limit + financedCosts;
+  const grossMaximum = Math.min(percentageMaximum, c.maxLoanUsd || Infinity);
+  const netMaximum = Math.max(0, grossMaximum - financedCosts);
+  // If installments are shown, the cash requirement must fund that loan scenario.
+  // Only switch to an all-cash requirement when borrowing contributes no funds.
+  const cashRequired = cashPurchase || netMaximum === 0 ? price + feesTotal : feesTotal + upfrontBankCosts + price - netMaximum;
   const rawShortfall = Math.max(0, cashRequired - c.savingsUsd);
-  const shortfall = rawShortfall < 1e-7 ? 0 : rawShortfall;
+  const shortfall = rawShortfall < 1e-7 ? 0 : Math.ceil((rawShortfall - 1e-7) * 100) / 100;
   const status = cashPurchase ? 'cash' : shortfall > 0 ? 'insufficient' : 'eligible';
-  const lifeInsurance = grossRequired * c.lifeInsuranceAnnualPercent / 100 / 12;
-  const installments = status === 'eligible' ? TERMS.map(years => {
-    const principalInterest = payment(grossRequired, c.teaPercent, years);
+  const noUsefulFinancing = !cashPurchase && netMaximum === 0;
+  const grossLoan = cashPurchase || noUsefulFinancing ? 0 : Math.min(grossRequired, grossMaximum);
+  const netLoan = Math.max(0, grossLoan - financedCosts);
+  const requiredDownPayment = price - netLoan;
+  const lifeInsurance = grossLoan * c.lifeInsuranceAnnualPercent / 100 / 12;
+  const installments = grossLoan > 0 ? TERMS.map(years => {
+    const principalInterest = payment(grossLoan, c.teaPercent, years);
     return { years, principalInterest, lifeInsurance, total: principalInterest + lifeInsurance };
   }) : [];
   for (const entry of installments) { convert(entry.total, 'UYU', c); convert(entry.total, 'UI', c); }
-  const noUsefulFinancing = !cashPurchase && netMaximum === 0;
-  const result = { noUsefulFinancing, price, notary, agency, feesTotal, bankCosts, upfrontBankCosts, financedCosts, available, downPayment, netRequired, grossRequired, grossMaximum, netMaximum, cashRequired, shortfall, status, installments, feesShortfall: Math.max(0, feesTotal + upfrontBankCosts - c.savingsUsd), remainingSavings: Math.max(0, c.savingsUsd - price - feesTotal) };
+  const result = { noUsefulFinancing, price, notary, agency, feesTotal, fireInsurance, bankCosts, upfrontBankCosts, financedCosts, available, downPayment, requiredDownPayment, netRequired, netLoan, grossRequired, grossLoan, grossMaximum, netMaximum, cashRequired, shortfall, status, installments, feesShortfall: Math.max(0, feesTotal + upfrontBankCosts - c.savingsUsd), remainingSavings: Math.max(0, c.savingsUsd - price - feesTotal) };
   if (Object.values(result).some(v => typeof v === 'number' && !Number.isFinite(v)) || installments.some(i => !Number.isFinite(i.total))) throw new Error('Los valores configurados son demasiado grandes para calcular.');
   return result;
 }

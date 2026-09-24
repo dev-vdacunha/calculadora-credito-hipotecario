@@ -1,5 +1,17 @@
 # Calculadora hipotecaria
 
+## Ajustes vigentes del 24 de septiembre de 2026
+
+Estas decisiones solicitadas por el usuario reemplazan las reglas anteriores de importe fijo de incendio y bloqueo de cuotas:
+
+- Incendio configurable como porcentaje total del precio: `2759 / 195000 * 100` (≈1,414872%). Es una aproximación inferida, no una tasa anual ni una tarifa confirmada.
+- Vale limitado tanto por financiación porcentual como por `maxLoanUsd: 165000`, el tope de la oferta de referencia; cero desactiva este último. A USD 195.000 se simula USD 165.000 de vale, USD 160.741 líquidos, entrega USD 34.259 y efectivo total USD 48.533.
+- Seguro de vida incluido en la cuota total estimada, sin descontarlo otra vez del líquido: los cargos de administración e incendio ya explican la diferencia exacta del vale.
+- Las cuotas se calculan aunque falte efectivo, sobre el menor entre el vale necesario y el disponible. Se informa que suponen completar el faltante; el efectivo mínimo se resalta en rojo.
+- Se muestra el precio máximo de vivienda junto a los ahorros, incluyendo honorarios, incendio, administración, porcentaje y tope del vale. Valor inicial: USD 141.142,53; se redondea hacia abajo al centavo. También considera la alternativa al contado.
+- Si se simula un préstamo, el efectivo necesario debe cubrir ese mismo escenario. Solo se usa el total al contado cuando ya alcanza para comprar sin préstamo o el banco no aporta líquido.
+- El faltante positivo se redondea hacia arriba al centavo para evitar advertencias de «faltan USD 0,00».
+
 ## Objetivo y decisiones acordadas
 
 Aplicación en español, responsive y pensada primero para celular. El usuario ingresa el valor del inmueble en USD y obtiene el efectivo necesario, el préstamo requerido y las cuotas para 10, 15, 20, 25 y 30 años. La configuración se define en un objeto JavaScript versionado en Git, sin autenticación y con acceso libre. Cambiarla requiere editar el archivo, hacer commit y publicar el nuevo despliegue.

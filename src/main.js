@@ -1,6 +1,6 @@
 import './style.css';
 import { config, configFields } from './config.js';
-import { calculate, convert, TERMS, validateConfig } from './calculator.js';
+import { calculate, convert, TERMS, validateConfig, maximumPropertyPrice } from './calculator.js';
 
 const icons = {
   home: '<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z"/>',
@@ -17,7 +17,8 @@ let priceText = '165000';
 let currencyIndex = 0;
 const currencies = ['UYU', 'UI', 'USD'];
 let configurationError = '';
-try { validateConfig(config); } catch (error) { configurationError = error.message; }
+let maximumPrice;
+try { validateConfig(config); maximumPrice = maximumPropertyPrice(config); } catch (error) { configurationError = error.message; }
 
 const app = document.querySelector('#app');
 app.innerHTML = `
@@ -43,7 +44,7 @@ function renderCalculator() {
           <label class="input-label" for="property-price">Precio del inmueble</label>
           <div class="price-field"><span>USD</span><input id="property-price" type="number" inputmode="decimal" min="0.01" max="1000000000000" step="any" placeholder="Ej. 165000" aria-describedby="price-help price-error" value="${escape(priceText)}" /></div>
           <p id="price-help" class="field-help">Ingresá el precio de venta en dólares.</p><p id="price-error" class="input-error" role="alert"></p>
-          <div class="savings-line"><span class="small-icon">${icon('check')}</span><span>Partís de <strong>${usd(config.savingsUsd)}</strong> ahorrados</span><a href="#configuracion" aria-label="Ver configuración de ahorros">${icon('arrow')}</a></div>
+          <div class="savings-line"><span class="small-icon">${icon('check')}</span><div class="savings-overview"><span>Partís de <strong>${usd(config.savingsUsd)}</strong> ahorrados</span><span class="savings-limit">Vivienda máxima estimada<strong id="maximum-property-price">${configurationError ? '—' : maximumPrice === Infinity ? 'Sin límite por efectivo' : usd(maximumPrice)}</strong><small>Según tus ahorros y estos gastos</small></span></div><a href="#configuracion" aria-label="Ver configuración de ahorros">${icon('arrow')}</a></div>
         </section>
         <section class="card breakdown-card" aria-labelledby="cash-title"><div class="section-top"><span class="step">02</span><h2 id="cash-title">Tu efectivo, paso a paso</h2></div><div id="cash-breakdown"></div></section>
         <div class="reference-note">${icon('info')}<p>Usamos tus honorarios y los cargos de la referencia bancaria. <a href="#configuracion">Ver valores y supuestos</a></p></div>
@@ -92,34 +93,35 @@ function updateResults() {
     row('Escribana', usd(r.notary), `${number(config.notaryPercent, 2)}% + IVA ${number(config.vatPercent)}%`) +
     row('Inmobiliaria', usd(r.agency), `${number(config.agencyPercent, 2)}% + IVA ${number(config.vatPercent)}%`) +
     row('Total de honorarios', usd(r.feesTotal), 'Se pagan con tus ahorros', 'subtotal') +
-    (r.upfrontBankCosts ? row('Gastos bancarios en efectivo', usd(r.upfrontBankCosts), 'Administración + seguro de incendio') : '') +
+    (r.upfrontBankCosts ? row('Administración en efectivo', usd(config.administrationUsd)) + row('Incendio en efectivo', usd(r.fireInsurance), `${number(config.fireInsurancePercent, 4)}% del inmueble`) : '') +
     row(r.status === 'cash' ? 'Destinás a la compra' : 'Disponible para la entrega', usd(r.downPayment), r.status === 'cash' ? 'Cubrís el precio completo sin préstamo' : 'Tus ahorros menos gastos en efectivo', 'highlight-row') +
     (r.feesShortfall > 0 ? `<p class="inline-warning">Te faltan ${usd(r.feesShortfall)} para cubrir los gastos en efectivo, antes de la entrega.</p>` : '') +
-    row(r.status === 'cash' || r.noUsefulFinancing ? 'Efectivo total para comprar' : 'Efectivo mínimo necesario', usd(r.cashRequired), r.status === 'cash' || r.noUsefulFinancing ? 'Precio + honorarios, sin préstamo' : 'Honorarios + entrega mínima + cargos en efectivo', 'total-row') +
+    (r.status !== 'cash' && !r.noUsefulFinancing ? row('Entrega al banco', usd(r.requiredDownPayment), 'Precio del inmueble menos el líquido del préstamo') : '') +
+    row(r.status === 'cash' || r.noUsefulFinancing ? 'Efectivo total para comprar' : 'Efectivo mínimo necesario', usd(r.cashRequired), r.shortfall > 0 ? `Te faltan ${usd(r.shortfall)} sobre tus ahorros` : r.status === 'cash' || r.noUsefulFinancing ? 'Precio + honorarios, sin préstamo' : 'Honorarios + entrega mínima + cargos en efectivo', `total-row${r.shortfall > 0 ? ' cash-shortfall' : ''}`) +
     (r.status === 'cash' ? row('Ahorros que te quedan', usd(r.remainingSavings)) : '');
 
   const cash = r.status === 'cash';
   const insufficient = r.status === 'insufficient';
   document.querySelector('#loan-summary').innerHTML = `
-    <div class="loan-heading"><p class="eyebrow">${cash ? 'TU COMPRA' : 'PRÉSTAMO QUE NECESITÁS'}</p><span class="pill">${number(config.teaPercent, 2)}% TEA</span></div>
-    <div class="loan-amount"><span>USD</span> ${number(r.grossRequired, 2)}</div>
-    <p class="loan-caption">${cash ? 'Podés comprar sin préstamo.' : 'Monto del vale · tu deuda total con el banco'}</p>
-    ${cash ? '' : `<div class="loan-details">${row('Líquido para la compra', usd(r.netRequired))}${row('Gastos incluidos en el vale', usd(r.financedCosts), r.financedCosts ? 'Administración + seguro de incendio' : 'Se pagan por separado con tus ahorros')}${row('Máximo del vale', usd(r.grossMaximum), `${number(config.maxFinancingPercent)}% del precio · límite sobre ${config.financingLimitBasis === 'gross' ? 'el vale' : 'el líquido'}`)}${row('Máximo líquido para comprar', usd(r.netMaximum))}</div>`}
-    <div class="eligibility ${insufficient ? 'warning' : 'success'}">${icon(insufficient ? 'info' : 'check')}<div><strong>${insufficient ? `Te faltan ${usd(r.shortfall)} de efectivo` : cash ? 'Tus ahorros cubren la compra' : 'Tus ahorros alcanzan para la entrega'}</strong><p>${insufficient ? (r.noUsefulFinancing ? 'Los cargos consumen todo el máximo financiable: el préstamo no aporta dinero para la compra. El faltante corresponde a comprar al contado.' : 'Con este precio superás el límite de financiación. Las cuotas se habilitan cuando alcanza tu entrega.') : cash ? 'No necesitás financiar ni pagar cargos de préstamo.' : 'Podés comparar los cinco plazos de financiación.'}</p></div></div>`;
+    <div class="loan-heading"><p class="eyebrow">${cash ? 'TU COMPRA' : 'PRÉSTAMO A SIMULAR'}</p><span class="pill">${number(config.teaPercent, 2)}% TEA</span></div>
+    <div class="loan-amount"><span>USD</span> ${number(r.grossLoan, 2)}</div>
+    <p class="loan-caption">${cash ? 'Podés comprar sin préstamo.' : r.noUsefulFinancing ? 'El préstamo no aporta líquido para esta compra.' : 'Monto del vale · base de las cuotas'}</p>
+    ${cash ? '' : `<div class="loan-details">${row('Líquido para la compra', usd(r.netLoan))}${r.financedCosts && !r.noUsefulFinancing ? row('Administración incluida en el vale', usd(config.administrationUsd)) + row('Incendio incluido en el vale', usd(r.fireInsurance), `${number(config.fireInsurancePercent, 4)}% del inmueble`) : ''}${row('Máximo del vale', usd(r.grossMaximum), `${number(config.maxFinancingPercent)}% del precio · límite sobre ${config.financingLimitBasis === 'gross' ? 'el vale' : 'el líquido'}${config.maxLoanUsd ? ` · tope ${usd(config.maxLoanUsd)}` : ''}`)}${insufficient ? row('Vale que requerirían tus ahorros actuales', usd(r.grossRequired), 'Supera el máximo disponible') : ''}</div>`}
+    <div class="eligibility ${insufficient ? 'warning' : 'success'}">${icon(insufficient ? 'info' : 'check')}<div><strong>${insufficient ? `Te faltan ${usd(r.shortfall)} de efectivo` : cash ? 'Tus ahorros cubren la compra' : 'Tus ahorros alcanzan para la entrega'}</strong><p>${insufficient ? (r.noUsefulFinancing ? 'Los cargos consumen todo el máximo financiable: el préstamo no aporta dinero para la compra. El faltante corresponde a comprar al contado.' : 'Podés ver las cuotas sobre el máximo disponible del banco. Para concretar la compra necesitás completar el efectivo faltante.') : cash ? 'No necesitás financiar ni pagar cargos de préstamo.' : 'Podés comparar los cinco plazos de financiación.'}</p></div></div>`;
   renderInstallments(r);
 }
 
 function renderInstallments(r) {
   const currency = currencies[currencyIndex];
   const format = usdValue => `${currency === 'UYU' ? '$' : currency} ${number(convert(usdValue, currency, config), 2)}`;
-  const eligible = r?.status === 'eligible';
+  const hasInstallments = Boolean(r?.installments.length);
   document.querySelector('#installments').innerHTML = `<div class="term-list">${TERMS.map((years, index) => {
     const entry = r?.installments[index];
-    return `<div class="term-row ${eligible ? '' : 'muted'}"><div class="term-label"><strong>${years}</strong><span>años<small>${years * 12} cuotas</small></span></div><div class="term-payment"><strong>${entry ? format(entry.total) : '—'}</strong>${entry ? `<small>Capital + interés: ${format(entry.principalInterest)}<br>Seguro de vida: ${format(entry.lifeInsurance)}</small>` : '<small>Sin calcular</small>'}</div></div>`;
+    return `<div class="term-row ${hasInstallments ? '' : 'muted'}"><div class="term-label"><strong>${years}</strong><span>años<small>${years * 12} cuotas</small></span></div><div class="term-payment"><strong>${entry ? format(entry.total) : '—'}</strong>${entry ? `<small>Capital + interés: ${format(entry.principalInterest)}<br>Seguro de vida incluido: ${format(entry.lifeInsurance)}</small>` : '<small>Sin calcular</small>'}</div></div>`;
   }).join('')}</div>`;
-  document.querySelector('#installment-note').textContent = eligible
-    ? `Incluye seguro de vida estimado: ${number(config.lifeInsuranceAnnualPercent, 2)}% anual sobre saldo / 12. La fórmula debe confirmarse con el banco. El seguro disminuye al amortizar; las cotizaciones pueden variar.`
-    : r?.status === 'cash' ? 'No hay cuotas: tus ahorros cubren el inmueble y los honorarios.' : 'Las cuotas aparecerán cuando el precio y tus ahorros permitan cumplir el límite del banco.';
+  document.querySelector('#installment-note').textContent = hasInstallments
+    ? `Cuotas sobre un vale de ${usd(r.grossLoan)}${r.shortfall > 0 ? ', suponiendo que completás el efectivo faltante' : ''}. Incluyen seguro de vida estimado: ${number(config.lifeInsuranceAnnualPercent, 2)}% anual sobre saldo / 12. La fórmula debe confirmarse con el banco. El seguro disminuye al amortizar; las cotizaciones pueden variar.`
+    : r?.status === 'cash' ? 'No hay cuotas: tus ahorros cubren el inmueble y los honorarios.' : r?.noUsefulFinancing ? 'No hay cuotas: los cargos consumen todo el préstamo disponible.' : 'Ingresá un precio válido para comparar las cuotas.';
 }
 
 function renderSettings() {
@@ -127,7 +129,7 @@ function renderSettings() {
   main.innerHTML = `<section class="intro settings-intro"><p class="eyebrow">LAS BASES DE TU SIMULACIÓN</p><h1>Cada número,<br>en su lugar<span>.</span></h1><p>Estos son los valores que usa tu calculadora.</p></section>
     <div class="settings-layout"><aside class="settings-aside"><div class="settings-aside-icon">${icon('settings')}</div><h2>Una configuración.<br>Todas tus cuentas.</h2><p>Para cambiar los valores, editá <code>src/config.js</code>, hacé commit y publicá el cambio.</p><p>Los valores son comunes para todos los visitantes.</p><a class="back-link" href="#calculadora">${icon('arrow', 'reversed')} Volver a calcular</a></aside>
     <section class="card settings-card" aria-label="Valores de configuración">${configFields.map(([key, label, unit, description]) => {
-      const value = unit === 'option' ? optionLabels[config[key]] : unit === 'USD' ? usd(config[key]) : `${number(config[key], unit.startsWith('UYU/') ? 4 : 2)} ${unit}`;
+      const value = key === 'maxLoanUsd' && config[key] === 0 ? 'Sin tope adicional' : unit === 'option' ? optionLabels[config[key]] : unit === 'USD' ? usd(config[key]) : `${number(config[key], unit.startsWith('UYU/') || key === 'fireInsurancePercent' ? 4 : 2)} ${unit}`;
       return `<div class="setting-row"><div><h2>${escape(label)}</h2><p>${escape(description)}</p><code>${key}</code></div><strong>${escape(value)}</strong></div>`;
     }).join('')}</section></div>
     <section class="bottom-note">${icon('info')}<p>Los gastos bancarios provienen de la simulación de un inmueble de USD 195.000 a 20 años. Las cotizaciones corresponden a otra captura y no son valores actuales. El seguro de vida y la base del límite requieren confirmación del banco.</p></section>`;

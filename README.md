@@ -23,18 +23,19 @@ Los porcentajes se expresan como `3.75` (no `0.0375`). Los decimales en JavaScri
 | --- | ---: | --- |
 | Ahorros | USD 35.000 | Efectivo antes de gastos |
 | Financiación máxima | 85% | Límite sobre la base seleccionada |
+| Tope del vale de referencia | USD 165.000 | Tope de la oferta, además del porcentaje; `maxLoanUsd: 0` lo desactiva |
 | TEA | 3,75% | Tasa efectiva anual del préstamo en UI |
 | Escribana / inmobiliaria | 3% cada una | Sobre el precio, antes del IVA |
 | IVA | 22% | Solo sobre esos honorarios |
 | UI | UYU 6,6468 | Referencia de la primera captura; actualizar manualmente |
 | Dólar | UYU 41,052 | Referencia de la primera captura; actualizar manualmente |
 | Administración | USD 1.500 | Cargo total bancario |
-| Seguro de incendio | USD 2.759 | Importe total, no mensual |
+| Seguro de incendio | ≈1,414872% del inmueble | `fireInsurancePercent: 2759 / 195000 * 100`; cargo total, no anual |
 | Seguro de vida | 0,78% | Se estima anual sobre saldo / 12; confirmar con el banco |
 | Pago de cargos | `financed` | Descontados del vale; `cash` los paga con ahorros |
 | Base del límite | `gross` | Vale completo; `net` aplica el límite al líquido de compra |
 
-Administración e incendio son importes de una simulación para **USD 195.000 a 20 años**: no se conoce su fórmula para otros precios/plazos. Se mantienen como importes configurables y no se presentan como tarifas universales. La aplicación indica esto en la pantalla de configuración.
+Administración e incendio se basan en una simulación para **USD 195.000 a 20 años**. Administración se mantiene en USD 1.500; incendio escala con el precio usando la proporción aproximada `2759/195000`. Esta proporción no confirma una tarifa bancaria universal ni su dependencia del plazo. El tope de USD 165.000 replica la oferta y es configurable: el límite porcentual por sí solo permitiría USD 165.750.
 
 ## Cómo se calcula
 
@@ -42,8 +43,8 @@ Administración e incendio son importes de una simulación para **USD 195.000 a 
 2. Se restan los honorarios y, si corresponde, los cargos pagados en efectivo de tus ahorros.
 3. El resto se destina a la entrega, sin valores negativos ni mayores que el precio.
 4. Líquido necesario = precio − entrega.
-5. Vale necesario = líquido necesario + cargos financiados. **Las cuotas se calculan sobre el vale**, que es tu deuda.
-6. Se compara el vale o el líquido con el límite seleccionado. Si falta efectivo no se calculan cuotas, pero se muestran ambos máximos y cuánto falta. La entrega exactamente igual a la mínima es válida.
+5. Vale necesario = líquido necesario + cargos financiados. Vale a simular = menor entre el necesario y el máximo del banco (porcentaje y tope de la oferta). **Las cuotas se calculan sobre ese vale**, que es tu deuda.
+6. Líquido disponible = vale a simular − cargos financiados. Entrega al banco = precio − líquido disponible. Aunque falte efectivo, se muestran las cuotas del préstamo disponible, suponiendo que completás el faltante. La fila de efectivo mínimo se resalta en rojo y muestra cuánto falta. La entrega exactamente igual a la mínima es válida.
 7. Si podés comprar al contado, no se aplican seguros ni cargos del préstamo y se muestran los ahorros restantes.
 
 La cuota base usa sistema francés y tasa mensual efectiva:
@@ -56,11 +57,19 @@ cuota = vale × r / (1 − (1+r)^(-n))
 
 Con tasa cero: `vale/n`. Se agrega por separado el seguro de vida inicial estimado: `vale × tasaAnual/100 / 12`. Se muestra **primera cuota estimada**: el seguro sobre saldo disminuye al amortizar. Las conversiones son equivalencias a las cotizaciones configuradas; no predicen futuras cuotas en UYU o USD ni la evolución de la UI.
 
+El seguro de vida está incluido en la cuota total del préstamo. No se deduce otra vez del líquido: administración e incendio ya explican exactamente `165000 − 1500 − 2759 = 160741`.
+
+### Precio máximo de vivienda
+
+Junto a los ahorros aparece el máximo de compra según el efectivo y los límites configurados, incluyendo honorarios, administración e incendio. Con los valores iniciales es **USD 141.142,53**. Se redondea hacia abajo al centavo; no evalúa ingresos ni aprobación del banco.
+
+Con límite sobre el vale, la restricción porcentual es `precio ≤ (ahorros − administración) / (1 − financiación + honorariosConIVA + incendio)`. El tope absoluto agrega `precio ≤ (ahorros + tope − administración) / (1 + honorariosConIVA + incendio)`. Se toma la menor cota; también se contempla comprar al contado sin cargos de préstamo. Las bases y formas de pago alternativas tienen su cálculo correspondiente.
+
 ### Referencias verificadas
 
 - **Captura bancaria:** precio USD 195.000, vale USD 165.000, administración USD 1.500 e incendio USD 2.759 → líquido USD 160.741, entrega USD 34.259. Sumando honorarios de USD 14.274, necesitás USD 48.533 en efectivo: faltan USD 13.533 respecto de USD 35.000. El vale ofrecido de USD 165.000 es distinto del máximo teórico de USD 165.750.
 - **Ejemplo original sin cargos bancarios:** precio USD 165.000 → honorarios USD 12.078, entrega USD 22.922, líquido necesario USD 142.078, máximo USD 140.250, faltante USD 1.828. Para reproducirlo, poné administración e incendio en cero.
-- **Configuración inicial con cargos bancarios:** precio USD 165.000 → vale necesario USD 146.337, máximo USD 140.250, faltante USD 6.087.
+- **Configuración inicial con cargos bancarios:** precio USD 165.000 → incendio USD 2.334,54; vale necesario USD 145.912,54; vale simulado USD 140.250; líquido USD 136.415,46; entrega USD 28.584,54; faltante USD 5.662,54. Las cuotas se calculan sobre USD 140.250.
 
 La cuota de **6.412 UI / UYU 42.578** de la captura no se puede reconstruir exactamente sin la fórmula del seguro de vida y las cotizaciones de esa simulación. No se mezclan silenciosamente con las cotizaciones de la otra captura ni se inventa una fórmula para forzar coincidencia. El resultado es una estimación, no una oferta bancaria.
 

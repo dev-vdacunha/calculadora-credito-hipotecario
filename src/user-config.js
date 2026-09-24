@@ -17,6 +17,14 @@ function plainObject(value) {
 }
 
 function fieldValueValid(field, value) {
+  if (field.type === 'rate-tiers') {
+    if (!Array.isArray(value) || value.length === 0 || value[0]?.minLoanUsd !== 0) return false;
+    return value.every((tier, index) => Number.isFinite(tier?.minLoanUsd) && tier.minLoanUsd >= 0 && Number.isFinite(tier?.annualRatePercent) && tier.annualRatePercent >= 0 && (index === 0 || tier.minLoanUsd > value[index - 1].minLoanUsd));
+  }
+  if (field.type === 'fee-tiers') {
+    if (!Array.isArray(value) || value.length === 0 || value[0]?.minLoanUsd !== 0) return false;
+    return value.every((tier, index) => Number.isFinite(tier?.minLoanUsd) && tier.minLoanUsd >= 0 && Number.isFinite(tier?.percent) && tier.percent >= 0 && (tier.capUsd === null || (Number.isFinite(tier.capUsd) && tier.capUsd >= 0)) && (index === 0 || tier.minLoanUsd > value[index - 1].minLoanUsd));
+  }
   if (field.type === 'select') return field.options.some(option => option.value === value);
   if (typeof value !== 'number' || !Number.isFinite(value)) return false;
   if (field.min !== undefined && value < field.min) return false;
@@ -28,6 +36,10 @@ function allowedFields(fields) {
   return new Map(fields.map(field => [field.key, field]));
 }
 
+function valuesEqual(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
 function validOverrides(defaults, fields, candidate) {
   const metadata = allowedFields(fields);
   const result = {};
@@ -37,7 +49,7 @@ function validOverrides(defaults, fields, candidate) {
     if (!field || !fieldValueValid(field, value)) continue;
     const merged = { ...defaults, ...result, [key]: value };
     try { validateConfig(merged); } catch { continue; }
-    if (!Object.is(value, defaults[key])) result[key] = value;
+    if (!valuesEqual(value, defaults[key])) result[key] = structuredClone(value);
   }
   return result;
 }
@@ -74,8 +86,8 @@ export function updateUserConfig(defaults, fields, currentOverrides, key, value,
   const field = allowedFields(fields).get(key);
   if (!field || !fieldValueValid(field, value)) throw new Error('El valor de configuración no es válido.');
   const next = { ...currentOverrides };
-  if (Object.is(value, defaults[key])) delete next[key];
-  else next[key] = value;
+  if (valuesEqual(value, defaults[key])) delete next[key];
+  else next[key] = structuredClone(value);
   const effective = { ...defaults, ...validOverrides(defaults, fields, next) };
   validateConfig(effective);
   return { config: effective, overrides: next, storageError: resolved.error || writeOverrides(next, storage) };

@@ -109,7 +109,7 @@ function updateResults() {
     row('Escribana', usd(r.notary), `${number(effectiveConfig.notaryPercent, 2)}% + IVA`) +
     row('Inmobiliaria', usd(r.agency), `${number(effectiveConfig.agencyPercent, 2)}% + IVA`) +
     row('Total de honorarios', usd(r.feesTotal), 'Se pagan con tus ahorros', 'subtotal') +
-    (r.upfrontBankCosts ? row('Administración en efectivo', usd(effectiveConfig.administrationUsd)) + row('Incendio en efectivo', usd(r.fireInsurance), `${number(effectiveConfig.fireInsurancePercent, 4)}% del inmueble`) : '') +
+    (r.upfrontBankCosts ? row('Gastos de otorgamiento en efectivo', usd(r.originationFee)) + row('Incendio en efectivo', usd(r.fireInsurance), `${number(effectiveConfig.fireInsurancePercent, 4)}% del inmueble`) : '') +
     row(r.status === 'cash' ? 'Destinás a la compra' : 'Disponible para la entrega', usd(r.downPayment), r.status === 'cash' ? 'Cubrís el precio completo sin préstamo' : 'Tus ahorros menos gastos en efectivo', 'highlight-row') +
     (r.feesShortfall > 0 ? `<p class="inline-warning">Te faltan ${usd(r.feesShortfall)} para cubrir los gastos en efectivo, antes de la entrega.</p>` : '') +
     (r.status !== 'cash' && !r.noUsefulFinancing ? row('Entrega al banco', usd(r.requiredDownPayment), 'Precio del inmueble menos el líquido del préstamo') : '') +
@@ -119,10 +119,10 @@ function updateResults() {
   const cash = r.status === 'cash';
   const insufficient = r.status === 'insufficient';
   document.querySelector('#loan-summary').innerHTML = `
-    <div class="loan-heading"><p class="eyebrow">${cash ? 'TU COMPRA' : 'PRÉSTAMO A SIMULAR'}</p><span class="pill">${number(effectiveConfig.teaPercent, 2)}% TEA</span></div>
+    <div class="loan-heading"><p class="eyebrow">${cash ? 'TU COMPRA' : 'PRÉSTAMO A SIMULAR'}</p><span class="pill">${number(r.teaPercent, 2)}% TEA</span></div>
     <div class="loan-amount"><span>USD</span> ${number(r.grossLoan, 2)}</div>
     <p class="loan-caption">${cash ? 'Podés comprar sin préstamo.' : r.noUsefulFinancing ? 'El préstamo no aporta líquido para esta compra.' : 'Monto del vale · base de las cuotas'}</p>
-    ${cash ? '' : `<div class="loan-details">${row('Líquido para la compra', usd(r.netLoan))}${r.financedCosts && !r.noUsefulFinancing ? row('Administración incluida en el vale', usd(effectiveConfig.administrationUsd)) + row('Incendio incluido en el vale', usd(r.fireInsurance), `${number(effectiveConfig.fireInsurancePercent, 4)}% del inmueble`) : ''}${row('Máximo del vale', usd(r.grossMaximum), `${number(effectiveConfig.maxFinancingPercent)}% del precio`)}${insufficient ? row('Vale que requerirían tus ahorros actuales', usd(r.grossRequired), 'Supera el máximo disponible') : ''}</div>`}
+    ${cash ? '' : `<div class="loan-details">${row('Líquido para la compra', usd(r.netLoan))}${r.financedCosts && !r.noUsefulFinancing ? row('Gastos de otorgamiento incluidos', usd(r.originationFee)) + row('Incendio incluido en el vale', usd(r.fireInsurance), `${number(effectiveConfig.fireInsurancePercent, 4)}% del inmueble`) : ''}${row('Máximo del vale', usd(r.grossMaximum), `${number(effectiveConfig.maxFinancingPercent)}% del precio`)}${insufficient ? row('Vale que requerirían tus ahorros actuales', usd(r.grossRequired), 'Supera el máximo disponible') : ''}</div>`}
     <div class="eligibility ${insufficient ? 'warning' : 'success'}">${icon(insufficient ? 'info' : 'check')}<div><strong>${insufficient ? `Te faltan ${usd(r.shortfall)} de efectivo` : cash ? 'Tus ahorros cubren la compra' : 'Tus ahorros alcanzan para la entrega'}</strong><p>${insufficient ? (r.noUsefulFinancing ? 'Los cargos consumen todo el máximo financiable: el préstamo no aporta dinero para la compra. El faltante corresponde a comprar al contado.' : 'Podés ver las cuotas sobre el máximo disponible del banco. Para concretar la compra necesitás completar el efectivo faltante.') : cash ? 'No necesitás financiar ni pagar cargos de préstamo.' : 'Podés comparar los cinco plazos de financiación.'}</p></div></div>`;
   renderInstallments(r);
 }
@@ -133,10 +133,10 @@ function renderInstallments(r) {
   const hasInstallments = Boolean(r?.installments.length);
   document.querySelector('#installments').innerHTML = `<div class="term-list">${TERMS.map((years, index) => {
     const entry = r?.installments[index];
-    return `<div class="term-row ${hasInstallments ? '' : 'muted'}"><div class="term-label"><strong>${years}</strong><span>años<small>${years * 12} cuotas</small></span></div><div class="term-payment"><strong>${entry ? format(entry.total) : '—'}</strong>${entry ? `<small>Capital + interés: ${format(entry.principalInterest)}<br>Seguro de vida incluido: ${format(entry.lifeInsurance)}</small>` : '<small>Sin calcular</small>'}</div></div>`;
+    return `<div class="term-row ${hasInstallments ? '' : 'muted'}"><div class="term-label"><strong>${years}</strong><span>años<small>${years * 12} cuotas</small></span></div><div class="term-payment"><strong>${entry ? format(entry.total) : '—'}</strong>${entry ? `<small>Capital + interés: ${format(entry.principalInterest)}<br>Seguro de vida incluido: ${format(entry.lifeInsurance)}<br>Otros débitos, primer mes: ${format(entry.accountDebits)}</small>` : '<small>Sin calcular</small>'}</div></div>`;
   }).join('')}</div>`;
   document.querySelector('#installment-note').textContent = hasInstallments
-    ? `Cuotas sobre un vale de ${usd(r.grossLoan)}${r.shortfall > 0 ? ', suponiendo que completás el efectivo faltante' : ''}. Incluyen seguro de vida estimado: ${number(effectiveConfig.lifeInsuranceAnnualPercent, 2)}% anual sobre saldo / 12. La fórmula debe confirmarse con el banco. El seguro disminuye al amortizar; las cotizaciones pueden variar.`
+    ? `Cuotas sobre un vale de ${usd(r.grossLoan)}${r.shortfall > 0 ? ', suponiendo que completás el efectivo faltante' : ''}. TEA aplicada: ${number(r.teaPercent, 2)}%. Incluyen seguro de vida estimado: ${number(effectiveConfig.lifeInsuranceAnnualPercent, 2)}% anual sobre saldo / 12. Otros débitos del primer mes: ${(r.installments[0].accountDebitRateAnnual).toFixed(3)}% anual sobre saldo. La fórmula debe confirmarse con el banco.`
     : r?.status === 'cash' ? 'No hay cuotas: tus ahorros cubren el inmueble y los honorarios.' : r?.noUsefulFinancing ? 'No hay cuotas: los cargos consumen todo el préstamo disponible.' : 'Ingresá un precio válido para comparar las cuotas.';
 }
 
@@ -144,6 +144,7 @@ function configControl(field, value, index) {
   const id = `config-field-${index}`;
   const descriptionId = `${id}-description`;
   const errorId = `${id}-error`;
+  if (field.type === 'rate-tiers' || field.type === 'fee-tiers') return tierControl(field, value, index);
   const controlValue = field.decimals === undefined ? value : Number(value).toFixed(field.decimals);
   if (field.type === 'select') {
     return `<select id="${id}" data-config-index="${index}" aria-describedby="${descriptionId} ${errorId}">${field.options.map(option => `<option value="${escape(option.value)}" ${option.value === value ? 'selected' : ''}>${escape(option.label)}</option>`).join('')}</select>`;
@@ -154,17 +155,90 @@ function configControl(field, value, index) {
   return `<div class="config-number-control">${input}<button class="refresh-quotation" type="button" aria-label="${ariaLabel}" data-update-quotation="${field.key}">Actualizar desde ${dataUruguayLogo()}</button><span class="quotation-update-status" data-quotation-status="${field.key}" role="status" aria-live="polite"></span></div>`;
 }
 
+function tierControl(field, value, index) {
+  const isRate = field.type === 'rate-tiers';
+  const rows = value.map((tier, tierIndex) => {
+    const secondKey = isRate ? 'annualRatePercent' : 'percent';
+    const secondValue = tier[secondKey];
+    const cap = isRate ? '' : `<td><input class="tier-field" type="number" inputmode="decimal" data-tier-field="capUsd" data-tier-index="${tierIndex}" value="${tier.capUsd ?? ''}" min="0" step="0.01" aria-label="Tope del tramo ${tierIndex + 1}" placeholder="Sin tope" /></td>`;
+    return `<tr><td><input class="tier-field" type="number" inputmode="decimal" data-tier-field="minLoanUsd" data-tier-index="${tierIndex}" value="${tier.minLoanUsd}" min="0" step="0.01" aria-label="Desde dólares del tramo ${tierIndex + 1}" /></td><td><input class="tier-field" type="number" inputmode="decimal" data-tier-field="${secondKey}" data-tier-index="${tierIndex}" value="${secondValue}" min="0" step="0.01" aria-label="${isRate ? 'TEA' : 'Porcentaje'} del tramo ${tierIndex + 1}" /></td>${cap}<td><button class="tier-remove" type="button" data-tier-action="remove" data-tier-index="${tierIndex}" ${value.length === 1 ? 'disabled' : ''} aria-label="Eliminar tramo ${tierIndex + 1}">×</button></td></tr>`;
+  }).join('');
+  return `<div class="tier-editor" data-tier-editor-index="${index}" data-tier-type="${field.type}" aria-describedby="config-field-${index}-description config-field-${index}-error"><table><thead><tr><th>Desde (USD)</th><th>${isRate ? 'TEA (%)' : 'Porcentaje (%)'}</th>${isRate ? '' : '<th>Tope (USD)</th>'}<th><span class="sr-only">Acciones</span></th></tr></thead><tbody>${rows}</tbody></table><button class="tier-add" type="button" data-tier-action="add">Agregar tramo</button><p class="config-error" id="config-field-${index}-error" role="alert"></p></div>`;
+}
+
+function tierDefault(field, values) {
+  const last = values.at(-1);
+  const minLoanUsd = (last?.minLoanUsd ?? 0) + 100000;
+  return field.type === 'rate-tiers'
+    ? { minLoanUsd, annualRatePercent: last?.annualRatePercent ?? 0 }
+    : { minLoanUsd, percent: last?.percent ?? 0, capUsd: last?.capUsd ?? null };
+}
+
+function readTierValues(editor, field) {
+  const rows = [...editor.querySelectorAll('tbody tr')];
+  return rows.map(rowElement => {
+    const values = {};
+    rowElement.querySelectorAll('.tier-field').forEach(input => {
+      const key = input.dataset.tierField;
+      values[key] = key === 'capUsd' && input.value === '' ? null : Number(input.value);
+    });
+    return values;
+  });
+}
+
+function persistTierValues(field, editor, values) {
+  const errorElement = editor.querySelector('.config-error');
+  try {
+    const next = updateUserConfig(config, configFields, userConfig.overrides, field.key, values);
+    userConfig = next;
+    effectiveConfig = next.config;
+    configurationError = '';
+    errorElement.textContent = '';
+    announce(next.storageError || 'Cambios guardados en este navegador.');
+    return true;
+  } catch (error) {
+    errorElement.textContent = error.message;
+    announce('El cambio no se guardó porque el tramo no es válido.');
+    return false;
+  }
+}
+
+function attachTierEditor(field, editor) {
+  const sync = () => persistTierValues(field, editor, readTierValues(editor, field));
+  editor.querySelectorAll('.tier-field').forEach(input => input.addEventListener('change', sync));
+  editor.querySelector('[data-tier-action="add"]').addEventListener('click', () => {
+    const values = [...effectiveConfig[field.key], tierDefault(field, effectiveConfig[field.key])];
+    if (persistTierValues(field, editor, values)) { renderSettings(); announce('Tramo agregado y guardado.'); }
+  });
+  editor.querySelectorAll('[data-tier-action="remove"]').forEach(button => button.addEventListener('click', () => {
+    const values = readTierValues(editor, field).filter((_, i) => i !== Number(button.dataset.tierIndex));
+    if (persistTierValues(field, editor, values)) { renderSettings(); announce('Tramo eliminado y guardado.'); }
+  }));
+}
+
 function renderSettings() {
+  const sections = [...new Set(configFields.map(field => field.section))];
+  const settingsMarkup = sections.map(section => {
+    const fields = configFields.filter(field => field.section === section);
+    return `<section class="settings-section"><h2>${escape(section)}</h2><div class="settings-section-card">${fields.map(field => {
+      const index = configFields.indexOf(field);
+      const error = field.type === 'rate-tiers' || field.type === 'fee-tiers' ? '' : `<p class="config-error" id="config-field-${index}-error" role="alert"></p>`;
+      return `<div class="setting-row"><div class="setting-copy"><label for="config-field-${index}">${escape(field.label)}</label><p id="config-field-${index}-description">${escape(field.description)}</p>${error}</div><div class="setting-control">${configControl(field, effectiveConfig[field.key], index)}</div></div>`;
+    }).join('')}</div></section>`;
+  }).join('');
   main.innerHTML = `<section class="intro settings-intro"><p class="eyebrow">LAS BASES DE TU SIMULACIÓN</p><h1>Cada número,<br>en su lugar<span>.</span></h1><p>Estos son los valores que usa tu calculadora.</p></section>
     <div class="settings-layout"><aside class="settings-aside"><div class="settings-aside-icon">${icon('settings')}</div><h2>Una configuración.<br>Todas tus cuentas.</h2><p>Editá los valores que quieras. Se guardan en este navegador y se aplican enseguida a tus cálculos. Podés volver a los valores predeterminados cuando quieras.</p><p class="storage-note">${escape(userConfig.storageError || 'Tus cambios se guardan solo en este navegador y dispositivo.')}</p><button class="reset-config" id="reset-config" type="button">Restablecer valores predeterminados</button><div id="config-status" class="config-status" role="status" aria-live="polite"></div><a class="back-link" href="#calculadora">${icon('arrow', 'reversed')} Volver a calcular</a></aside>
-    <section class="card settings-card" aria-label="Valores de configuración">${configFields.map((field, index) => `<div class="setting-row"><div class="setting-copy"><label for="config-field-${index}">${escape(field.label)}</label><p id="config-field-${index}-description">${escape(field.description)}</p><p class="config-error" id="config-field-${index}-error" role="alert"></p></div><div class="setting-control">${configControl(field, effectiveConfig[field.key], index)}</div></div>`).join('')}</section></div>
-    <section class="quotation-source-card"><div><strong>Fuente de cotizaciones</strong><a class="datauruguay-brand-link" href="https://datosuruguay.com/api" target="_blank" rel="noopener noreferrer" aria-label="Datos Uruguay, API y atribución CC BY 4.0">${dataUruguayLogo()}</a><p>La UI proviene del BCU y el dólar usa la venta BROU, consultados mediante esta fuente.</p><div class="quotation-source-links"><a href="https://datosuruguay.com/ui?utm_source=api&utm_medium=attribution&utm_campaign=backlinks" target="_blank" rel="noopener noreferrer">UI · BCU</a><a href="https://datosuruguay.com/dolar?utm_source=api&utm_medium=attribution&utm_campaign=backlinks" target="_blank" rel="noopener noreferrer">Dólar · venta BROU</a></div></div></section>
+    <section class="settings-card grouped-settings" aria-label="Valores de configuración">${settingsMarkup}</section></div>
+    <section class="quotation-source-card"><div><div class="quotation-source-heading"><strong>Fuente de cotizaciones</strong><a class="datauruguay-brand-link" href="https://datosuruguay.com/api" target="_blank" rel="noopener noreferrer" aria-label="Datos Uruguay, API y atribución CC BY 4.0">${dataUruguayLogo()}</a></div><p>La UI proviene del BCU y el dólar usa la venta BROU, consultados mediante esta fuente.</p><div class="quotation-source-links"><a href="https://datosuruguay.com/ui?utm_source=api&utm_medium=attribution&utm_campaign=backlinks" target="_blank" rel="noopener noreferrer">UI · BCU</a><a href="https://datosuruguay.com/dolar?utm_source=api&utm_medium=attribution&utm_campaign=backlinks" target="_blank" rel="noopener noreferrer">Dólar · venta BROU</a></div></div></section>
     <section class="bottom-note">${icon('info')}<p>Los valores por defecto provienen de simulación de créditos hipotecarios en la web</p></section>`;
   document.querySelectorAll('[data-config-index]').forEach(control => {
     const field = configFields[Number(control.dataset.configIndex)];
     const handle = () => saveSetting(field, control);
     control.addEventListener('change', handle);
     if (field.type === 'number') control.addEventListener('input', handle);
+  });
+  document.querySelectorAll('[data-tier-editor-index]').forEach(editor => {
+    attachTierEditor(configFields[Number(editor.dataset.tierEditorIndex)], editor);
   });
   document.querySelectorAll('[data-update-quotation]').forEach(button => {
     const field = configFields.find(item => item.key === button.dataset.updateQuotation);

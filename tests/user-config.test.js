@@ -23,8 +23,8 @@ test('sin overrides usa defaults y guarda solo la diferencia', () => {
 
 test('volver al default elimina el override y resetear no borra otras claves', () => {
   const storage = new MemoryStorage({ other: 'keep' });
-  const updated = updateUserConfig(config, configFields, {}, 'teaPercent', 4.1, storage);
-  const restored = updateUserConfig(config, configFields, updated.overrides, 'teaPercent', config.teaPercent, storage);
+  const updated = updateUserConfig(config, configFields, {}, 'regulatoryDebitAnnualPercent', 0.2, storage);
+  const restored = updateUserConfig(config, configFields, updated.overrides, 'regulatoryDebitAnnualPercent', config.regulatoryDebitAnnualPercent, storage);
   assert.deepEqual(restored.overrides, {});
   assert.equal(storage.getItem(STORAGE_KEY), null);
   storage.setItem(STORAGE_KEY, JSON.stringify({ savingsUsd: 42000 }));
@@ -67,6 +67,16 @@ test('acceso a localStorage bloqueado desde el navegador informa que no está di
 test('no se permite persistir valores desconocidos o inválidos', () => {
   const storage = new MemoryStorage();
   assert.throws(() => updateUserConfig(config, configFields, {}, 'maxLoanUsd', 100000, storage));
-  assert.throws(() => updateUserConfig(config, configFields, {}, 'teaPercent', -1, storage));
+  assert.throws(() => updateUserConfig(config, configFields, {}, 'regulatoryDebitAnnualPercent', -1, storage));
   assert.throws(() => updateUserConfig(config, configFields, {}, 'bankCostsPayment', 'unknown', storage));
+});
+
+test('persiste arrays de tramos como un override atómico y descarta arrays inválidos', () => {
+  const storage = new MemoryStorage();
+  const tiers = [{ minLoanUsd: 0, annualRatePercent: 4.75 }, { minLoanUsd: 100000, annualRatePercent: 3.75 }, { minLoanUsd: 300000, annualRatePercent: 3.25 }];
+  const updated = updateUserConfig(config, configFields, {}, 'teaTiers', tiers, storage);
+  assert.deepEqual(updated.overrides.teaTiers, tiers);
+  assert.deepEqual(JSON.parse(storage.getItem(STORAGE_KEY)).teaTiers, tiers);
+  assert.throws(() => updateUserConfig(config, configFields, {}, 'teaTiers', [{ minLoanUsd: 0, annualRatePercent: 4.75 }, { minLoanUsd: 0, annualRatePercent: 3.75 }], storage));
+  assert.throws(() => updateUserConfig(config, configFields, {}, 'originationFeeTiers', [{ minLoanUsd: 30000, percent: 1.5, capUsd: 1500 }], storage));
 });

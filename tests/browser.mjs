@@ -54,6 +54,12 @@ try {
   assert.match(await page.locator('.eligibility').innerText(), /5\.662,54/);
   assert.equal(await page.locator('#maximum-property-price').innerText(), 'USD 141.142,53');
   assert.equal(await page.locator('.term-payment > strong').count(), 5);
+  assert.match(await page.locator('.term-payment').first().innerText(), /Otros débitos, primer mes/);
+
+  await page.locator('#property-price').fill('99999');
+  assert.match(await page.locator('.loan-summary .pill').innerText(), /4,75%/);
+  await page.locator('#property-price').fill('120000');
+  assert.match(await page.locator('.loan-summary .pill').innerText(), /3,75%/);
 
   await page.locator('#property-price').fill('195000');
   assert.match(await page.locator('.loan-amount').innerText(), /165\.750,00/);
@@ -74,14 +80,19 @@ try {
 
   await page.locator('#nav-settings').click();
   await page.locator('.setting-row').first().waitFor();
-  assert.equal(await page.locator('.setting-row').count(), 12);
-  assert.equal(await page.locator('input').count(), 11);
+  assert.equal(await page.locator('.setting-row').count(), 14);
+  assert.equal(await page.locator('.settings-section').count(), 4);
+  assert.deepEqual(await page.locator('.settings-section > h2').allTextContents(), ['Financiamiento', 'Honorarios y cotizaciones', 'Cargos bancarios', 'Seguros']);
+  assert.equal(await page.locator('.tier-editor').count(), 2);
+  assert.equal(await page.locator('.tier-editor').nth(0).locator('tbody tr').count(), 2);
+  assert.equal(await page.locator('.tier-editor').nth(1).locator('tbody tr').count(), 2);
+  assert.ok(await page.locator('input').count() >= 21);
   assert.equal(await page.locator('select').count(), 1);
   assert.equal(await page.locator('code').count(), 0);
   const settingsText = await page.locator('.settings-card').innerText();
   for (const technicalKey of ['uiUyu', 'teaPercent', 'savingsUsd', 'maxLoanUsd', 'financingLimitBasis']) assert.doesNotMatch(settingsText, new RegExp(technicalKey));
   assert.match(settingsText, /Ahorros disponibles/);
-  assert.match(settingsText, /Tasa efectiva anual/);
+  assert.match(settingsText, /Tasas por monto solicitado/);
   assert.equal(await page.locator('#config-field-9').inputValue(), '1.414872');
   assert.match(await page.locator('.quotation-source-card').innerText(), /datos\s*Uruguay/);
   assert.equal(await page.locator('.quotation-source-card .datauruguay-brand-link').getAttribute('href'), 'https://datosuruguay.com/api');
@@ -90,6 +101,19 @@ try {
   assert.match(await page.locator('.setting-row').nth(7).innerText(), /venta BROU/i);
   assert.equal(await page.locator('#config-field-6').evaluate(el => getComputedStyle(el).textAlign), 'right');
   assert.equal(await page.locator('#config-field-7').evaluate(el => getComputedStyle(el).textAlign), 'right');
+  await page.locator('.tier-editor').nth(0).getByRole('button', { name: 'Agregar tramo' }).click();
+  assert.equal(await page.locator('.tier-editor').nth(0).locator('tbody tr').count(), 3);
+  const addedRate = page.locator('.tier-editor').nth(0).locator('tbody tr').nth(2).locator('.tier-field');
+  await addedRate.nth(0).fill('300000');
+  await addedRate.nth(1).fill('3.25');
+  assert.match(await page.locator('#config-status').innerText(), /Cambios guardados/);
+  assert.equal((await page.evaluate(() => JSON.parse(localStorage.getItem('calculadora-credito-hipotecario.config.v1')).teaTiers)).length, 3);
+  await page.locator('.tier-editor').nth(0).getByRole('button', { name: 'Eliminar tramo 3' }).click();
+  assert.equal(await page.locator('.tier-editor').nth(0).locator('tbody tr').count(), 2);
+  await page.locator('.tier-editor').nth(1).getByRole('button', { name: 'Agregar tramo' }).click();
+  assert.equal(await page.locator('.tier-editor').nth(1).locator('tbody tr').count(), 3);
+  await page.locator('.tier-editor').nth(1).getByRole('button', { name: 'Eliminar tramo 3' }).click();
+  assert.equal(await page.locator('.tier-editor').nth(1).locator('tbody tr').count(), 2);
   await page.locator('[data-update-quotation="uiUyu"]').click();
   await page.waitForFunction(() => document.querySelector('[data-quotation-status="uiUyu"]').textContent.includes('24/09/2026'));
   assert.equal(await page.locator('#config-field-6').inputValue(), '6.6537');
@@ -108,6 +132,7 @@ try {
   assert.match(await page.locator('[data-quotation-status="uiUyu"]').innerText(), /fecha/i);
   await page.locator('#reset-config').click();
   assert.equal(await page.evaluate(() => localStorage.getItem('calculadora-credito-hipotecario.config.v1')), null);
+  assert.equal(await page.locator('.tier-editor').nth(0).locator('tbody tr').count(), 2);
   invalidUiResponse = false;
   assert.match(await page.locator('.settings-aside').innerText(), /Editá los valores que quieras/);
   assert.match(await page.locator('.bottom-note').innerText(), /Los valores por defecto provienen de simulación de créditos hipotecarios en la web/);

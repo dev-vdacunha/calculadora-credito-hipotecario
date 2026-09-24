@@ -2,7 +2,7 @@
 
 ## Implementación vigente
 
-La configuración tiene defaults en `src/config.js` y overrides parciales en `localStorage` bajo `calculadora-credito-hipotecario.config.v1`. La pantalla permite editar los doce parámetros activos, muestra solo nombres y descripciones humanas, y ofrece restablecer los defaults. `maxLoanUsd` y `financingLimitBasis` fueron eliminados. El máximo del vale es siempre precio × financiación máxima (85%). Las cuotas se muestran aunque falte efectivo, usando el préstamo máximo disponible.
+La configuración tiene defaults en `src/config.js` y overrides parciales en `localStorage` bajo `calculadora-credito-hipotecario.config.v1`. La pantalla está agrupada por Financiamiento, Honorarios y cotizaciones, Cargos bancarios y Seguros. La TEA y los gastos de otorgamiento se editan como arrays de tramos. `maxLoanUsd` y `financingLimitBasis` fueron eliminados. El máximo del vale es siempre precio × financiación máxima (85%). Las cuotas se muestran aunque falte efectivo, usando el préstamo máximo disponible.
 
 La UI puede actualizarse manualmente desde la serie diaria del BCU de Datos Uruguay. El dólar usa el endpoint de cotización BROU y siempre toma `data.sell` (venta), nunca compra ni promedio. Cada botón solo altera su propia cotización, guarda el override local y muestra la fecha efectiva o timestamp de la API; ante error se conserva el valor previo. Los botones, la tarjeta y los estados de éxito muestran un wordmark SVG inline «du datosUruguay». La tarjeta enlaza a la API y a las páginas de cada serie con atribución CC BY 4.0.
 
@@ -12,7 +12,9 @@ Estas decisiones solicitadas por el usuario reemplazan las reglas anteriores de 
 
 - Incendio configurable como porcentaje total del precio: `2759 / 195000 * 100` (≈1,414872%). Es una aproximación inferida, no una tasa anual ni una tarifa confirmada.
 - Vale limitado por financiación porcentual: precio × 85%. A USD 195.000 el máximo bruto es USD 165.750; administración e incendio aproximado dejan USD 161.491 líquidos. La oferta histórica de USD 165.000 se conserva como referencia, no como tope de la app.
-- Seguro de vida incluido en la cuota total estimada, sin descontarlo otra vez del líquido: los cargos de administración e incendio ya explican la diferencia exacta del vale.
+- Seguro de vida incluido en la cuota total estimada, sin descontarlo otra vez del líquido: los cargos de otorgamiento e incendio ya explican la diferencia del vale.
+- Gastos de otorgamiento: 2,5% sobre capital antes del gasto hasta USD 30.000; 1,5% desde USD 30.000 con tope de USD 1.500.
+- Débitos bancarios: 0,1% y 0,345% anual sobre saldo al cierre del mes; se muestran como estimación separada del primer mes.
 - Las cuotas se calculan aunque falte efectivo, sobre el menor entre el vale necesario y el disponible. Se informa que suponen completar el faltante; el efectivo mínimo se resalta en rojo.
 - Se muestra el precio máximo de vivienda junto a los ahorros, incluyendo honorarios, incendio, administración y el porcentaje de financiación. Valor inicial: USD 141.142,53; se redondea hacia abajo al centavo. También considera la alternativa al contado.
 - Si se simula un préstamo, el efectivo necesario debe cubrir ese mismo escenario. Solo se usa el total al contado cuando ya alcanza para comprar sin préstamo o el banco no aporta líquido.
@@ -30,24 +32,24 @@ Frontend con Vite, JavaScript y CSS responsive. Módulo puro de cálculos, módu
 
 ## Configuración inicial
 
-Financiación máxima: 85%; ahorros: USD 35.000; TEA: 3,75% (un único campo); honorarios de escribana: 3%; honorarios de inmobiliaria: 3%; IVA sobre ambos honorarios: 22%; UI: UYU 6,6468 por UI; dólar: UYU 41,052 por USD. Las cotizaciones provienen de la captura y se etiquetan como referencias editables, sin actualización automática.
+Financiación máxima: 85%; ahorros: USD 35.000; TEA por tramos: 4,75% desde USD 0 y 3,75% desde USD 100.000 de vale bruto; honorarios de escribana: 3%; honorarios de inmobiliaria: 3%; IVA sobre ambos honorarios: 22%; UI y dólar configurables. Las cotizaciones pueden actualizarse desde Datos Uruguay y sus overrides quedan locales.
 
 Todos los números deben ser finitos. Ahorros y honorarios pueden ser cero; financiación debe ser mayor que cero y como máximo 100%; TEA e IVA deben ser no negativos. Las cotizaciones deben ser estrictamente positivas. La aplicación valida el objeto al iniciar y muestra un error claro si algún valor es inválido; no calcula con una configuración inválida. Los cargos bancarios y el seguro de vida deben ser finitos y no negativos, y las opciones de cálculo deben pertenecer al conjunto documentado.
 
 ### Conceptos bancarios: referencia principal
 
-La captura bancaria es la referencia principal para distinguir dinero recibido y deuda. Añadir estos campos a Configuración con ayuda visible:
+La captura bancaria es la referencia principal para distinguir dinero recibido y deuda. La configuración actual reemplaza el importe fijo de administración por la regla de gastos de otorgamiento y agrega los dos débitos mensuales del banco.
 
 | Campo | Valor inicial | Descripción |
 | --- | --- | --- |
-| Gastos administrativos | USD 1.500 | Cargo del banco; en la referencia se descuenta del monto del vale y reduce el dinero que llega a la compra. Importe editable, no porcentaje inferido. |
+| Gastos de otorgamiento | 2,5% / 1,5% | Se calcula sobre el capital antes del gasto; desde USD 30.000 tiene tope USD 1.500. |
 | Seguro de incendio | USD 2.759 | Importe total mostrado por el banco, descontado del vale en esta referencia. Editable; no se presume que se mantenga igual para todos los inmuebles o plazos. |
 | Forma de pagar estos gastos | Descontados del vale | Alternativa: pagados con efectivo propio. Define si aumentan la deuda necesaria o se restan de los ahorros antes de determinar la entrega. |
 | Tasa de seguro de vida | 0,78% | Tasa mostrada en la captura. Su periodicidad y base no aparecen; no se presenta como una fórmula bancaria confirmada. |
 | Cálculo del seguro de vida | Estimación anual sobre saldo | Supuesto explícito: tasa/12 aplicada al saldo de deuda antes de cada cuota. La primera cuota usa el vale completo; el componente de seguro disminuye al amortizar. |
-| Aplicar límite de financiación a | Monto del vale | Supuesto inicial conservador. Alternativa configurable: monto líquido destinado a la vivienda. El banco debe confirmar qué base usa para el 85%. |
+| Débitos mensuales | 0,1% + 0,345% anual | Se estiman sobre saldo de capital al cierre del primer mes y se muestran aparte de la cuota. |
 
-Los importes de administración e incendio son referencias editables, no tarifas universales. La pantalla señala que provienen de una simulación para USD 195.000 y 20 años. No se usa IVA de honorarios para estos cargos automáticamente.
+Los porcentajes y topes son referencias editables de las condiciones de Santander. La tasación de remate no se ingresa todavía; la calculadora asume que coincide con el precio de compraventa y deja explícito que el banco puede aplicar un límite adicional.
 
 ## Cálculos sin cargos bancarios
 

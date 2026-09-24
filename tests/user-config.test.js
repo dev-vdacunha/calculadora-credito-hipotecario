@@ -52,6 +52,18 @@ test('storage bloqueado deja trabajar en memoria y comunica el error', () => {
   assert.match(updated.storageError, /guardar|bloqueado/i);
 });
 
+test('acceso a localStorage bloqueado desde el navegador informa que no está disponible', () => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, get() { throw new Error('blocked'); } });
+  try {
+    const result = readUserConfig(config, configFields);
+    assert.match(result.storageError, /disponible/i);
+  } finally {
+    if (previous) Object.defineProperty(globalThis, 'localStorage', previous);
+    else delete globalThis.localStorage;
+  }
+});
+
 test('no se permite persistir valores desconocidos o inválidos', () => {
   const storage = new MemoryStorage();
   assert.throws(() => updateUserConfig(config, configFields, {}, 'maxLoanUsd', 100000, storage));

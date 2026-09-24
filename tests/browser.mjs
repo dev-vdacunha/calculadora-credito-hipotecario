@@ -91,6 +91,7 @@ try {
 
   await page.locator('#nav-settings').click();
   await page.locator('#reset-config').click();
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'reset-config');
   assert.match(await page.locator('#config-status').innerText(), /restaurados/);
   assert.equal(await page.evaluate(() => localStorage.getItem('calculadora-credito-hipotecario.config.v1')), null);
   await page.locator('#nav-calculator').click();

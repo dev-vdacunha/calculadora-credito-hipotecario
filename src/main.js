@@ -166,6 +166,7 @@ function renderSettings() {
     effectiveConfig = userConfig.config;
     configurationError = '';
     renderSettings();
+    document.querySelector('#reset-config')?.focus();
     announce(error || 'Valores predeterminados restaurados.');
   });
 }

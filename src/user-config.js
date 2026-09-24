@@ -2,8 +2,14 @@ import { validateConfig } from './calculator.js';
 
 export const STORAGE_KEY = 'calculadora-credito-hipotecario.config.v1';
 
-function defaultStorage() {
-  try { return typeof globalThis.localStorage === 'undefined' ? undefined : globalThis.localStorage; } catch { return undefined; }
+function resolveStorage(storage) {
+  if (storage !== undefined) return { storage, error: null };
+  try {
+    if (typeof globalThis.localStorage === 'undefined') return { storage: undefined, error: null };
+    return { storage: globalThis.localStorage, error: null };
+  } catch {
+    return { storage: undefined, error: 'El almacenamiento local no está disponible en este navegador.' };
+  }
 }
 
 function plainObject(value) {
@@ -40,8 +46,10 @@ function storageError(action) {
   return `No se pudo ${action} la configuración en este navegador; el almacenamiento local no está disponible.`;
 }
 
-export function readUserConfig(defaults, fields, storage = defaultStorage()) {
-  if (!storage) return { config: { ...defaults }, overrides: {}, storageError: null };
+export function readUserConfig(defaults, fields, storage) {
+  const resolved = resolveStorage(storage);
+  storage = resolved.storage;
+  if (!storage) return { config: { ...defaults }, overrides: {}, storageError: resolved.error };
   let raw;
   try { raw = storage.getItem(STORAGE_KEY); } catch { return { config: { ...defaults }, overrides: {}, storageError: storageError('leer') }; }
   if (!raw) return { config: { ...defaults }, overrides: {}, storageError: null };
@@ -60,7 +68,9 @@ function writeOverrides(overrides, storage) {
   } catch { return storageError('guardar'); }
 }
 
-export function updateUserConfig(defaults, fields, currentOverrides, key, value, storage = defaultStorage()) {
+export function updateUserConfig(defaults, fields, currentOverrides, key, value, storage) {
+  const resolved = resolveStorage(storage);
+  storage = resolved.storage;
   const field = allowedFields(fields).get(key);
   if (!field || !fieldValueValid(field, value)) throw new Error('El valor de configuración no es válido.');
   const next = { ...currentOverrides };
@@ -68,10 +78,12 @@ export function updateUserConfig(defaults, fields, currentOverrides, key, value,
   else next[key] = value;
   const effective = { ...defaults, ...validOverrides(defaults, fields, next) };
   validateConfig(effective);
-  return { config: effective, overrides: next, storageError: writeOverrides(next, storage) };
+  return { config: effective, overrides: next, storageError: resolved.error || writeOverrides(next, storage) };
 }
 
-export function resetUserConfig(storage = defaultStorage()) {
-  if (!storage) return null;
+export function resetUserConfig(storage) {
+  const resolved = resolveStorage(storage);
+  storage = resolved.storage;
+  if (!storage) return resolved.error;
   try { storage.removeItem(STORAGE_KEY); return null; } catch { return storageError('restablecer'); }
 }

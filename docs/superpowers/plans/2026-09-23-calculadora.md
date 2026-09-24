@@ -8,9 +8,9 @@
 **Spec:** ../specs/2026-09-23-calculadora-design.md
 
 ## Global constraints
-- Configuración en src/config.js, sin backend, auth ni localStorage.
+- Defaults en src/config.js y overrides parciales en localStorage; sin backend ni auth.
 - TEA 3,75%, plazos 10/15/20/25/30, honorarios 3% + IVA 22%.
-- Sin cuotas cuando no alcanza; mostrar líquido, vale, tope y faltante.
+- Mostrar cuotas sobre el préstamo máximo disponible aunque falte efectivo; mostrar líquido, vale máximo dinámico y faltante.
 - Seguro de vida estimado identificado; importes bancarios de referencia.
 
 ## Review focus
@@ -27,7 +27,7 @@
 - [x] Ejecutar `npm test` y verificar todas las expectativas.
 
 ## Task 2: Interfaz
-- [x] Crear index.html, src/main.js y src/style.css: entrada USD, resumen de fondos, estado de elegibilidad, cuotas, selector con flechas y configuración de consulta.
+- [x] Crear index.html, src/main.js y src/style.css: entrada USD, resumen de fondos, estado de elegibilidad, cuotas, selector con flechas y configuración editable.
 - [x] Comprobar navegación por teclado, casos vacío/viable/no viable, moneda en todos los plazos y consulta de parámetros en browser.
 - [x] Comprobar 320/390/768/1440 px sin desbordamiento y revisar captura visual.
 
@@ -41,7 +41,7 @@
 - Implementación autorizada por «Implementar». Plan ejecutado inline sin otra ronda de aprobación.
 
 - Motor: 14 pruebas pasan, incluido el caso de compra al contado y los dos hallazgos del revisor (financiación sin líquido útil, conversiones no finitas).
-- Browser: navegación, cuotas, monedas, teclado, estados vacíos/inválidos/al contado, configuración de consulta, ausencia de localStorage, publicación en subruta y anchos 320/390/768/1440 verificados con Chrome. Capturas revisadas visualmente.
+- Browser: navegación, cuotas, monedas, teclado, estados vacíos/inválidos/al contado, edición y persistencia local, reset, publicación en subruta y anchos 320/390/768/1440 verificados con Chrome. Capturas revisadas visualmente.
 - Build Vite correcto, workflow y guía listos. Sin publicación externa ni commits: el workspace no tiene metadatos Git funcionales.
 - Ruling: seguro de vida estimado anual sobre saldo, base del 85% sobre vale, ambos explicados/configurables conforme al diseño. Si el banco usa otra fórmula, será necesario ajustar la estimación.
 - Revisión independiente completada; ambos hallazgos corregidos. No quedan hallazgos diferidos.

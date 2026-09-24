@@ -1,14 +1,13 @@
 export const TERMS = Object.freeze([10, 15, 20, 25, 30]);
 
 export function validateConfig(c) {
-  const nonnegative = ['savingsUsd', 'teaPercent', 'vatPercent', 'notaryPercent', 'agencyPercent', 'administrationUsd', 'fireInsurancePercent', 'lifeInsuranceAnnualPercent', 'maxLoanUsd'];
+  const nonnegative = ['savingsUsd', 'teaPercent', 'vatPercent', 'notaryPercent', 'agencyPercent', 'administrationUsd', 'fireInsurancePercent', 'lifeInsuranceAnnualPercent'];
   for (const key of [...nonnegative, 'maxFinancingPercent', 'uiUyu', 'usdUyu']) {
     if (typeof c[key] !== 'number' || !Number.isFinite(c[key]) || c[key] < 0) throw new Error(`Configuración inválida: ${key} debe ser un número finito no negativo.`);
   }
-  if (c.maxFinancingPercent <= 0 || c.maxFinancingPercent > 100) throw new Error('La financiación debe ser mayor que 0 y como máximo 100%.');
+  if (c.maxFinancingPercent > 100) throw new Error('La financiación debe estar entre 0% y 100%.');
   if (c.uiUyu <= 0 || c.usdUyu <= 0) throw new Error('Las cotizaciones deben ser mayores que cero.');
   if (!['financed', 'cash'].includes(c.bankCostsPayment)) throw new Error('bankCostsPayment debe ser financed o cash.');
-  if (!['gross', 'net'].includes(c.financingLimitBasis)) throw new Error('financingLimitBasis debe ser gross o net.');
 }
 
 export function payment(principal, teaPercent, years) {
@@ -44,14 +43,12 @@ export function maximumPropertyPrice(c) {
   const honorarios = (c.notaryPercent + c.agencyPercent) / 100 * (1 + c.vatPercent / 100);
   const incendio = c.fireInsurancePercent / 100;
   const cashMaximum = c.savingsUsd / (1 + honorarios);
-  // Si el límite es sobre líquido y se financian los cargos, estos no reducen
-  // el porcentaje de compra cubierto, aunque sí consumen el tope del vale.
-  const netLimit = c.financingLimitBasis === 'net' && c.bankCostsPayment === 'financed';
-  const upfront = netLimit ? 0 : c.administrationUsd;
-  const share = (100 - c.maxFinancingPercent) / 100 + honorarios + (netLimit ? 0 : incendio);
+  // El 85% siempre limita el vale bruto; los cargos financiados consumen parte
+  // de ese vale y por eso reducen el líquido que llega a la compra.
+  const upfront = c.administrationUsd;
+  const share = (100 - c.maxFinancingPercent) / 100 + honorarios + incendio;
   const byPercent = share === 0 ? (c.savingsUsd >= upfront ? Infinity : 0) : (c.savingsUsd - upfront) / share;
-  const byCap = c.maxLoanUsd === 0 ? Infinity : (c.savingsUsd + c.maxLoanUsd - c.administrationUsd) / (1 + honorarios + incendio);
-  const maximum = Math.max(cashMaximum, Math.max(0, Math.min(byPercent, byCap)));
+  const maximum = Math.max(cashMaximum, Math.max(0, byPercent));
   // No redondear hacia arriba y recomendar un precio que exceda los ahorros.
   return Math.floor(maximum * 100) / 100;
 }
@@ -71,8 +68,7 @@ export function calculate(price, c) {
   const netRequired = price - downPayment;
   const grossRequired = cashPurchase ? 0 : netRequired + financedCosts;
   const limit = price * c.maxFinancingPercent / 100;
-  const percentageMaximum = c.financingLimitBasis === 'gross' ? limit : limit + financedCosts;
-  const grossMaximum = Math.min(percentageMaximum, c.maxLoanUsd || Infinity);
+  const grossMaximum = limit;
   const netMaximum = Math.max(0, grossMaximum - financedCosts);
   // If installments are shown, the cash requirement must fund that loan scenario.
   // Only switch to an all-cash requirement when borrowing contributes no funds.

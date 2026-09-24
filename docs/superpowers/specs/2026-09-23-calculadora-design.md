@@ -1,26 +1,30 @@
 # Calculadora hipotecaria
 
+## Implementación vigente
+
+La configuración tiene defaults en `src/config.js` y overrides parciales en `localStorage` bajo `calculadora-credito-hipotecario.config.v1`. La pantalla permite editar los doce parámetros activos, muestra solo nombres y descripciones humanas, y ofrece restablecer los defaults. `maxLoanUsd` y `financingLimitBasis` fueron eliminados. El máximo del vale es siempre precio × financiación máxima (85%). Las cuotas se muestran aunque falte efectivo, usando el préstamo máximo disponible.
+
 ## Ajustes vigentes del 24 de septiembre de 2026
 
 Estas decisiones solicitadas por el usuario reemplazan las reglas anteriores de importe fijo de incendio y bloqueo de cuotas:
 
 - Incendio configurable como porcentaje total del precio: `2759 / 195000 * 100` (≈1,414872%). Es una aproximación inferida, no una tasa anual ni una tarifa confirmada.
-- Vale limitado tanto por financiación porcentual como por `maxLoanUsd: 165000`, el tope de la oferta de referencia; cero desactiva este último. A USD 195.000 se simula USD 165.000 de vale, USD 160.741 líquidos, entrega USD 34.259 y efectivo total USD 48.533.
+- Vale limitado por financiación porcentual: precio × 85%. A USD 195.000 el máximo bruto es USD 165.750; administración e incendio aproximado dejan USD 161.491 líquidos. La oferta histórica de USD 165.000 se conserva como referencia, no como tope de la app.
 - Seguro de vida incluido en la cuota total estimada, sin descontarlo otra vez del líquido: los cargos de administración e incendio ya explican la diferencia exacta del vale.
 - Las cuotas se calculan aunque falte efectivo, sobre el menor entre el vale necesario y el disponible. Se informa que suponen completar el faltante; el efectivo mínimo se resalta en rojo.
-- Se muestra el precio máximo de vivienda junto a los ahorros, incluyendo honorarios, incendio, administración, porcentaje y tope del vale. Valor inicial: USD 141.142,53; se redondea hacia abajo al centavo. También considera la alternativa al contado.
+- Se muestra el precio máximo de vivienda junto a los ahorros, incluyendo honorarios, incendio, administración y el porcentaje de financiación. Valor inicial: USD 141.142,53; se redondea hacia abajo al centavo. También considera la alternativa al contado.
 - Si se simula un préstamo, el efectivo necesario debe cubrir ese mismo escenario. Solo se usa el total al contado cuando ya alcanza para comprar sin préstamo o el banco no aporta líquido.
 - El faltante positivo se redondea hacia arriba al centavo para evitar advertencias de «faltan USD 0,00».
 
 ## Objetivo y decisiones acordadas
 
-Aplicación en español, responsive y pensada primero para celular. El usuario ingresa el valor del inmueble en USD y obtiene el efectivo necesario, el préstamo requerido y las cuotas para 10, 15, 20, 25 y 30 años. La configuración se define en un objeto JavaScript versionado en Git, sin autenticación y con acceso libre. Cambiarla requiere editar el archivo, hacer commit y publicar el nuevo despliegue.
+Aplicación en español, responsive y pensada primero para celular. El usuario ingresa el valor del inmueble en USD y obtiene el efectivo necesario, el préstamo requerido y las cuotas para 10, 15, 20, 25 y 30 años. Los defaults se definen en un objeto JavaScript versionado en Git; los cambios de cada usuario se guardan localmente, sin autenticación y sin servidor.
 
 ## Arquitectura
 
-Página estática publicada en GitHub Pages. Un archivo `src/config.js` exporta un único objeto con todos los parámetros y comentarios descriptivos. Los valores son comunes a todos los visitantes; solo cambian al publicar una nueva versión del archivo. No hay base de datos, API, autenticación ni almacenamiento de configuración en el navegador.
+Página estática publicada en GitHub Pages. `src/config.js` exporta defaults y metadata humana; `src/user-config.js` filtra, combina y persiste únicamente overrides válidos en `localStorage`. No hay base de datos, API ni autenticación.
 
-Frontend con Vite, JavaScript y CSS responsive. Módulo puro de cálculos, archivo de configuración y vistas de calculadora/configuración separados. La pantalla de configuración es de consulta: muestra valores, unidades y descripciones; no ofrece un botón para guardar. El README explica cómo editar el objeto y publicar los cambios mediante Git.
+Frontend con Vite, JavaScript y CSS responsive. Módulo puro de cálculos, módulo de overrides y vistas de calculadora/configuración separados. La pantalla de configuración ofrece inputs numéricos, select, estado de guardado y restablecimiento; no muestra keys técnicas.
 
 ## Configuración inicial
 
@@ -58,7 +62,7 @@ Para precio P, ahorro A, financiación máxima f, honorarios e/i e IVA v, expres
 - Efectivo mínimo total = gastos + entrega mínima.
 - Faltante = máximo entre cero y efectivo mínimo total − A.
 
-Se admite exactamente la entrega mínima, porque el préstamo cubre hasta el porcentaje configurado. Si hay faltante, se muestran el desglose, el préstamo necesario y el máximo permitido, pero las cuotas quedan como «—». Si ni siquiera se cubren los honorarios, se informa el faltante sin mostrar una entrega negativa. Si los ahorros cubren toda la compra y los gastos, se informa que no es necesario pedir préstamo.
+Se admite exactamente la entrega mínima, porque el préstamo cubre hasta el porcentaje configurado. Si hay faltante, se muestran el desglose, el préstamo disponible y el máximo permitido, y las cuotas siguen visibles suponiendo que se completa el faltante. Si ni siquiera se cubren los honorarios, se informa el faltante sin mostrar una entrega negativa. Si los ahorros cubren toda la compra y los gastos, se informa que no es necesario pedir préstamo.
 
 Cuotas estimadas con sistema francés: tasa mensual r = (1 + TEA)^(1/12) − 1, n = años × 12, cuota = capital × r / (1 − (1 + r)^(-n)). Para TEA cero, capital/n. El capital se convierte a UI usando las cotizaciones configuradas. Las equivalencias en UYU y USD usan esas mismas cotizaciones, sin pronosticar inflación ni cambios futuros.
 
@@ -83,25 +87,25 @@ La fórmula del seguro de vida sigue siendo un supuesto visible hasta que el ban
 
 ## Pantallas y comportamiento
 
-Calculadora: input de precio en USD; desglose de los dos honorarios, ahorros, entrega y efectivo mínimo; resultado de préstamo requerido, tope y faltante; cinco plazos con cuotas. Flechas izquierda/derecha cambian la moneda de todas las cuotas entre UYU, UI y USD. El tope permanece visible incluso cuando las cuotas están bloqueadas.
+Calculadora: input de precio en USD; desglose de los dos honorarios, ahorros, entrega y efectivo mínimo; resultado de préstamo requerido, máximo del 85% y faltante; cinco plazos con cuotas. Flechas izquierda/derecha cambian la moneda de todas las cuotas entre UYU, UI y USD. Las cuotas permanecen visibles aunque falte efectivo.
 
-Configuración: pantalla de consulta con valores, unidades explícitas, descripciones y navegación de regreso. Incluye el texto «Para cambiar estos valores, editá src/config.js y publicá el cambio». Los datos se leen del mismo objeto que usa el cálculo, evitando duplicar valores. No hay guardado desde la interfaz, estados de conexión a base de datos ni claves externas.
+Configuración: pantalla editable con valores, unidades explícitas, descripciones, navegación de regreso, estado de persistencia local y botón de restablecimiento. Los datos efectivos se leen del mismo objeto que usa el cálculo, evitando duplicar valores. Los errores de storage no bloquean la sesión.
 
 Diseño con jerarquía clara, tarjetas legibles, controles táctiles, etiquetas accesibles, foco visible, navegación por teclado y sin desbordamiento horizontal en celular. Estados vacíos y entradas inválidas no producen NaN ni resultados engañosos.
 
 ## Referencias y verificación
 
-USD 165.000: USD 6.039 por honorario, USD 12.078 de gastos, USD 22.922 disponibles para entrega, USD 142.078 requeridos de préstamo, tope USD 140.250, faltante USD 1.828. No se calculan cuotas.
+USD 165.000 sin cargos bancarios: USD 6.039 por honorario, USD 12.078 de gastos, USD 22.922 disponibles para entrega, USD 142.078 requeridos de préstamo, máximo USD 140.250, faltante USD 1.828. Las cuotas se calculan sobre USD 140.250.
 
-USD 195.000 con las reglas configuradas: honorarios USD 7.137 cada uno, entrega disponible USD 20.726, préstamo necesario USD 174.274, tope USD 165.750 y faltante USD 8.524. El desglose específico de la captura bancaria se verifica a continuación.
+USD 195.000 con las reglas configuradas: honorarios USD 7.137 cada uno, vale necesario USD 178.533, máximo USD 165.750, líquido USD 161.491, entrega USD 33.509 y faltante USD 12.783. El desglose específico de la captura bancaria se conserva como referencia histórica.
 
-Los dos ejemplos anteriores corresponden a gastos bancarios en cero. Con los nuevos valores iniciales y límite sobre el vale, a USD 165.000 se requieren USD 146.337 de vale y faltan USD 6.087; a USD 195.000 se requieren USD 178.533 de vale y faltan USD 12.783.
+Con los valores iniciales y cargos financiados, a USD 165.000 se requieren USD 145.912,54 de vale, se simulan USD 140.250 y faltan USD 5.662,54.
 
 Referencia bancaria exacta para probar el desglose: precio USD 195.000; vale USD 165.000; administración USD 1.500; incendio USD 2.759; líquido = 165.000 − 1.500 − 2.759 = USD 160.741; entrega = 195.000 − 160.741 = USD 34.259. Sumando honorarios externos de USD 14.274, el efectivo necesario es USD 48.533 y faltan USD 13.533 respecto de USD 35.000. El vale ofrecido de USD 165.000 es inferior al tope teórico de USD 165.750: no se sustituye uno por otro al comprobar la captura.
 
 La misma captura indica 985.000 UI de líquido, cuota 6.412 UI / UYU 42.578, 20 años, tasa 3,75% y tasa de vida 0,78%. No muestra cotizaciones explícitas ni fórmula del seguro. No se mezclan las cotizaciones de la otra captura para exigir coincidencia. La cuota bancaria se conserva como referencia, no como prueba de igualdad para una fórmula no confirmada.
 
-Pruebas de cálculo para ejemplos, compra viable, umbral exacto, ahorro insuficiente para gastos, compra sin préstamo, tasa cero, cinco plazos y conversiones. Verificación de formulario, errores, navegación, cambio de moneda y vistas mobile/desktop. Verificar que cambiar el objeto de configuración modifica los resultados y los valores de la pantalla de consulta, y que el build incluye esos cambios sin usar almacenamiento local ni servicios externos.
+Pruebas de cálculo y overrides para defaults, edición parcial, recarga, reset, storage corrupto/bloqueado, opciones inválidas, 85% dinámico, ejemplos bancarios, cuotas con faltante, responsive y enlaces. Verificar build y workflow de GitHub Pages.
 
 ## Entregables
 

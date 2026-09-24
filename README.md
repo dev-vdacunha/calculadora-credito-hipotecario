@@ -1,4 +1,4 @@
-# Mi casa · Calculadora hipotecaria
+# Calculadora de crédito hipotecario
 
 Una página en español para saber cuánto efectivo necesitás para comprar un inmueble y cómo quedarían las cuotas a **10, 15, 20, 25 o 30 años**. Adaptada a celular, con cambio entre UYU, UI y USD mediante flechas.
 
@@ -33,16 +33,16 @@ Los porcentajes se expresan como `3.75` (no `0.0375`). Los decimales en JavaScri
 | TEA | 4,75% / 3,75% | Hasta USD 99.999 / desde USD 100.000 de vale bruto |
 | Escribana / inmobiliaria | 3% cada una | Sobre el precio, antes del IVA |
 | IVA | 22% | Solo sobre esos honorarios |
-| UI | UYU 6,6468 | Referencia de la primera captura; actualizar manualmente |
-| Dólar | UYU 41,052 | Referencia de la primera captura; actualizar manualmente |
-| Seguro de incendio | ≈1,414872% del inmueble | `fireInsurancePercent: 2759 / 195000 * 100`; cargo total, no anual |
+| UI | UYU 6,6468 | Valor inicial editable; se puede actualizar desde el BCU |
+| Dólar | UYU 41,052 | Valor inicial editable; se puede actualizar desde la venta BROU |
+| Seguro de incendio | 1,415% del inmueble | Cargo único estimado, no anual |
 | Gastos de otorgamiento | 2,5% / 1,5% | Menos de USD 30.000 / desde USD 30.000; tope USD 1.500 en el segundo tramo |
 | Tasa regulatoria | 0,1% anual | Sobre saldo de capital al cierre del mes |
 | Prestación complementaria | 0,345% anual | Sobre saldo de capital al cierre del mes |
 | Seguro de vida | 0,78% | Se estima anual sobre saldo / 12; confirmar con el banco |
 | Pago de cargos | `financed` | Descontados del préstamo; `cash` los paga con ahorros |
 
-Los gastos de otorgamiento e incendio se basan en una simulación para **USD 195.000 a 20 años**. El incendio escala con el precio usando la proporción aproximada `2759/195000`. Estas reglas son configurables y no confirman una tarifa universal para todos los productos.
+Los cargos de otorgamiento e incendio son estimaciones configurables del simulador. La cartilla de vivienda principal no publica una tarifa general de otorgamiento; los USD 850 que menciona corresponden al estudio y control arquitectónico de préstamos para construcción. El seguro de incendio usa un valor inicial de 1,415% del inmueble, no una tarifa anual confirmada.
 
 ## Cómo se calcula
 
@@ -50,9 +50,10 @@ Los gastos de otorgamiento e incendio se basan en una simulación para **USD 195
 2. Se restan los honorarios y, si corresponde, los cargos pagados en efectivo de tus ahorros.
 3. El resto se destina a la entrega, sin valores negativos ni mayores que el precio.
 4. Líquido necesario = precio − entrega.
-5. Vale necesario = líquido necesario + cargos financiados. Vale máximo = precio × 85%. Vale a simular = menor entre el necesario y el máximo porcentual. **Las cuotas se calculan sobre ese vale**, que es tu deuda. La TEA se elige por el tramo del vale bruto.
-6. Líquido disponible = vale a simular − cargos financiados. Entrega al banco = precio − líquido disponible. Aunque falte efectivo, se muestran las cuotas del préstamo disponible, suponiendo que completás el faltante. La fila de efectivo mínimo se resalta en rojo y muestra cuánto falta. La entrega exactamente igual a la mínima es válida.
-7. Si podés comprar al contado, no se aplican seguros ni cargos del préstamo y se muestran los ahorros restantes.
+5. Vale necesario = líquido necesario + cargos financiados. El límite estándar es el menor entre el 85% del precio y USD 750.000. La perilla comienza en el monto necesario según tus ahorros, redondeado hacia arriba al siguiente USD 100 y limitado por el máximo estándar. El monto elegido determina la TEA según su tramo.
+6. La perilla permite explorar desde USD 20.000 hasta el menor entre el precio de la vivienda y USD 750.000. Sobre el 85% mantiene los cálculos y avisa que supera el máximo estándar; la cartilla contempla hasta 95% para perfiles específicos y la simulación no evalúa elegibilidad. El gráfico compara la primera cuota estimada a 15 años para cada monto.
+7. Líquido disponible = vale elegido − cargos financiados. Entrega al banco = precio − líquido disponible. El efectivo necesario y cualquier faltante se recalculan con el monto elegido. La cuota estimada incluye seguro de vida; los otros débitos aparecen aparte.
+8. Si podés comprar al contado, no se aplican seguros ni cargos del préstamo y se muestran los ahorros restantes.
 
 La cuota base usa sistema francés y la TEA del tramo aplicable:
 
@@ -70,7 +71,7 @@ El seguro de vida está incluido en la cuota total del préstamo. No se deduce o
 
 ### Precio máximo de vivienda
 
-Junto a los ahorros aparece el máximo de compra según el efectivo y los límites configurados, incluyendo honorarios, administración e incendio. Con los valores iniciales es **USD 141.142,53**. Se redondea hacia abajo al centavo; no evalúa ingresos ni aprobación del banco.
+Junto a los ahorros aparece el máximo de compra según el efectivo y los límites configurados, incluyendo honorarios, administración e incendio. Con los valores iniciales es **USD 141.141,77**. Se redondea hacia abajo al centavo; no evalúa ingresos ni aprobación del banco.
 
 Con el 85% aplicado al vale, la vivienda máxima se obtiene buscando el mayor precio cuyo efectivo requerido sea cubierto por los ahorros, incluyendo honorarios, gastos de otorgamiento e incendio. También se contempla comprar al contado sin cargos de préstamo. El valor mostrado es una estimación de efectivo y no evalúa ingresos ni aprobación bancaria.
 

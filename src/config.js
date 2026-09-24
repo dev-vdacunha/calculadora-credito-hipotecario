@@ -4,7 +4,7 @@
  * Cada navegador puede guardar sus propios overrides desde la pantalla Configuración.
  * Los porcentajes se escriben como 3.75, NO como 0.0375.
  * Todos los importes son USD salvo las cotizaciones, que son UYU por unidad.
- * Los importes bancarios son referencias de la simulación de USD 195.000 a 20 años.
+ * Los cargos de otorgamiento e incendio son estimaciones configurables.
  */
 export const config = Object.freeze({
   savingsUsd: 35000,                 // Ahorros totales, antes de pagar honorarios.
@@ -16,13 +16,13 @@ export const config = Object.freeze({
   notaryPercent: 3,                   // Honorarios de escribana, sin IVA, sobre el precio.
   agencyPercent: 3,                   // Comisión inmobiliaria, sin IVA, sobre el precio.
   vatPercent: 22,                     // IVA aplicado solo a los dos honorarios anteriores.
-  uiUyu: 6.6468,                      // Pesos por UI. Referencia de la primera captura, no cotización actual.
-  usdUyu: 41.052,                     // Pesos por USD. Referencia de la primera captura, no cotización actual.
+  uiUyu: 6.6468,                      // Pesos por UI. Actualizable desde la cotización del BCU.
+  usdUyu: 41.052,                     // Pesos por USD. Actualizable desde la venta BROU.
   originationFeeTiers: Object.freeze([
     Object.freeze({ minLoanUsd: 0, percent: 2.5, capUsd: null }),
     Object.freeze({ minLoanUsd: 30000, percent: 1.5, capUsd: 1500 }),
   ]),                                // Gastos de otorgamiento sobre capital antes del gasto.
-  fireInsurancePercent: 2759 / 195000 * 100, // ≈1,414872% del precio: estimación a partir de la captura. Cargo total, no anual.
+  fireInsurancePercent: 1.415,             // Cargo estimado sobre el valor del inmueble, no anual.
   regulatoryDebitAnnualPercent: 0.1,  // Débito regulatorio sobre saldo al cierre del mes.
   complementaryServiceAnnualPercent: 0.345, // Prestación complementaria sobre saldo al cierre del mes.
   bankCostsPayment: 'financed',       // 'financed': descontados del vale; 'cash': pagados con ahorros.
@@ -37,12 +37,12 @@ export const configFields = [
   { key: 'notaryPercent', section: 'Honorarios y cotizaciones', label: 'Honorarios de escribana', unit: '%', type: 'number', min: 0, step: 0.01, description: 'Porcentaje sobre el precio del inmueble, antes de IVA.' },
   { key: 'agencyPercent', section: 'Honorarios y cotizaciones', label: 'Comisión inmobiliaria', unit: '%', type: 'number', min: 0, step: 0.01, description: 'Porcentaje sobre el precio del inmueble, antes de IVA.' },
   { key: 'vatPercent', section: 'Honorarios y cotizaciones', label: 'IVA de los honorarios', unit: '%', type: 'number', min: 0, step: 0.01, description: 'Se aplica a escribana e inmobiliaria; no a los cargos bancarios.' },
-  { key: 'uiUyu', section: 'Honorarios y cotizaciones', label: 'Cotización de la UI', unit: 'UYU/UI', type: 'number', min: 0.000001, step: 0.0001, decimals: 4, description: 'Pesos por unidad indexada. Valor de referencia de tu primera captura; actualizalo manualmente.' },
+  { key: 'uiUyu', section: 'Honorarios y cotizaciones', label: 'Cotización de la UI', unit: 'UYU/UI', type: 'number', min: 0.000001, step: 0.0001, decimals: 4, description: 'Pesos por unidad indexada para convertir las cuotas. Podés actualizarla desde el BCU o editarla manualmente.' },
   { key: 'usdUyu', section: 'Honorarios y cotizaciones', label: 'Cotización del dólar · venta BROU', unit: 'UYU/USD', type: 'number', min: 0.000001, step: 0.001, decimals: 3, description: 'Pesos por dólar a la venta según BROU. Es la cotización que usamos para estimar cuántos pesos equivalen a una cuota en dólares.' },
-  { key: 'originationFeeTiers', section: 'Cargos bancarios', label: 'Gastos de otorgamiento', type: 'fee-tiers', description: 'Se calculan sobre el capital antes de sumar este gasto. Los topes se expresan en dólares.' },
-  { key: 'fireInsurancePercent', section: 'Cargos bancarios', label: 'Seguro de incendio', unit: '%', type: 'number', min: 0, step: 0.000001, decimals: 6, description: 'Estimación: USD 2.759 / USD 195.000 × 100 ≈ 1,414872% del inmueble. Es un cargo total inferido de esa oferta, no una tarifa anual confirmada.' },
+  { key: 'originationFeeTiers', section: 'Cargos bancarios', label: 'Gastos de otorgamiento', type: 'fee-tiers', description: 'Cargo inicial estimado por formalizar el préstamo. Valores predeterminados: 2,5% para montos menores a USD 30.000; desde USD 30.000, 1,5% con tope de USD 1.500. La cartilla no publica una tarifa general para compra; sus USD 850 son de arquitectura y control de obra.' },
+  { key: 'fireInsurancePercent', section: 'Cargos bancarios', label: 'Seguro de incendio', unit: '%', type: 'number', min: 0, step: 0.001, decimals: 3, description: 'Cargo único estimado sobre el valor del inmueble. El valor predeterminado es 1,415%; no es una tasa anual.' },
   { key: 'regulatoryDebitAnnualPercent', section: 'Cargos bancarios', label: 'Tasa de control regulatorio', unit: '% anual', type: 'number', min: 0, step: 0.001, decimals: 3, description: 'Débito estimado sobre el saldo de capital al cierre de cada mes.' },
   { key: 'complementaryServiceAnnualPercent', section: 'Cargos bancarios', label: 'Prestación complementaria', unit: '% anual', type: 'number', min: 0, step: 0.001, decimals: 3, description: 'Débito estimado sobre el saldo de capital al cierre de cada mes.' },
   { key: 'bankCostsPayment', section: 'Cargos bancarios', label: 'Pago de gastos bancarios', unit: '', type: 'select', options: [{ value: 'financed', label: 'Se descuentan del préstamo' }, { value: 'cash', label: 'Los pago con mis ahorros' }], description: 'Elegí si otorgamiento e incendio se descuentan del vale o salen de tus ahorros.' },
-  { key: 'lifeInsuranceAnnualPercent', section: 'Seguros', label: 'Seguro de vida · tasa estimada', unit: '%', type: 'number', min: 0, step: 0.01, description: 'Incluido en la cuota total del préstamo. La captura indica 0,78% sin detallar el cálculo; se estima anual sobre saldo / 12.' },
+  { key: 'lifeInsuranceAnnualPercent', section: 'Seguros', label: 'Seguro de vida · tasa estimada', unit: '%', type: 'number', min: 0, step: 0.01, description: 'Incluido en la cuota estimada. Se calcula como una tasa anual sobre el saldo, dividida entre 12; confirmá la fórmula exacta con el banco.' },
 ];

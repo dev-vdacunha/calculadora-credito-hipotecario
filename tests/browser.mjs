@@ -39,34 +39,58 @@ try {
     body: JSON.stringify({ data: { currency: 'usd', bank: 'BROU', buy: 39.45, sell: 40.85, average: 40.15, as_of: '2026-09-23T23:11:02Z' }, meta: { source: 'BROU', unit: 'UYU/USD' } }),
   }));
 
+  assert.equal(await page.title(), 'Calculadora de crédito hipotecario');
+  assert.equal(await page.locator('.brand-name').innerText(), 'Calculadora de crédito hipotecario');
   assert.equal(await page.locator('#property-title').innerText(), 'Ingresar el valor del inmueble');
   assert.equal(await page.locator('#cash-title').innerText(), 'Capital necesario para la hipoteca');
   assert.equal(await page.locator('#installments-title').innerText(), 'Valor mensual de las cuotas');
   assert.match(await page.locator('.savings-line').innerText(), /Según tus ahorros/);
   assert.doesNotMatch(await page.locator('.savings-line').innerText(), /estos gastos/);
-  assert.match(await page.locator('.reference-note').innerText(), /Valores basados en honorarios y cargos obligatorios del banco\. Ver configuración/);
-  assert.equal(await page.locator('.reference-note a').getAttribute('href'), 'https://dev-vdacunha.github.io/calculadora-credito-hipotecario/#configuracion');
+  assert.match(await page.locator('.reference-note').innerText(), /La simulación incluye honorarios y cargos según la configuración elegida\. Ver configuración/);
+  assert.equal(await page.locator('.reference-note a').getAttribute('href'), '#configuracion');
   assert.match(await page.locator('footer').innerText(), /Desarrollado por Víctor da Cunha · 2026/);
   assert.equal(await page.locator('.github-footer-link').getAttribute('href'), 'https://github.com/dev-vdacunha/calculadora-credito-hipotecario');
   assert.equal(await page.evaluate(() => localStorage.length), 0);
 
   assert.match(await page.locator('#loan-summary').innerText(), /140\.250,00/);
-  assert.match(await page.locator('.eligibility').innerText(), /5\.662,54/);
-  assert.equal(await page.locator('#maximum-property-price').innerText(), 'USD 141.142,53');
+  assert.match(await page.locator('.eligibility').innerText(), /5\.662,75/);
+  assert.equal(await page.locator('#maximum-property-price').innerText(), 'USD 141.141,77');
   assert.equal(await page.locator('.term-payment > strong').count(), 5);
   assert.match(await page.locator('.term-payment').first().innerText(), /Otros débitos, primer mes/);
 
-  await page.locator('#property-price').fill('99999');
-  assert.match(await page.locator('.loan-summary .pill').innerText(), /4,75%/);
   await page.locator('#property-price').fill('120000');
-  assert.match(await page.locator('.loan-summary .pill').innerText(), /3,75%/);
+  assert.match(await page.locator('.loan-amount').innerText(), /97\.000,00/);
+  assert.match(await page.locator('#loan-summary').innerText(), /USD 102\.000,00/);
+  assert.match(await page.locator('#loan-slider-status').innerText(), /4,75% TEA/);
+  const parseUsd = text => Number(text.match(/cuota a 15 años: USD ([\d.]+,[\d]{2})/i)[1].replaceAll('.', '').replace(',', '.'));
+  const minimumNeededQuota = parseUsd(await page.locator('#loan-slider-status').innerText());
+  await page.locator('#loan-amount-control').evaluate(element => {
+    element.value = '800';
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  assert.match(await page.locator('.loan-amount').innerText(), /100\.000,00/);
+  assert.match(await page.locator('#loan-summary .pill').innerText(), /3,75%/);
+  const lowerTierQuota = parseUsd(await page.locator('#loan-slider-status').innerText());
+  assert.ok(lowerTierQuota < minimumNeededQuota);
+  await page.locator('#loan-amount-control').evaluate(element => {
+    element.value = '900';
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  assert.match(await page.locator('.eligibility').innerText(), /Supera el máximo estándar del 85%/);
+  assert.match(await page.locator('.eligibility').innerText(), /hasta 95% para ciertos perfiles/);
+  await page.locator('#loan-amount-control').evaluate(element => {
+    element.value = String(element.max);
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  assert.match(await page.locator('.eligibility').innerText(), /supera ese porcentaje y es solo ilustrativo/);
+  assert.match(await page.locator('#loan-slider-status').innerText(), /cuota a 15 años/);
 
   await page.locator('#property-price').fill('195000');
   assert.match(await page.locator('.loan-amount').innerText(), /165\.750,00/);
-  assert.match(await page.locator('#loan-summary').innerText(), /161\.491,00/);
-  assert.match(await page.locator('#cash-breakdown').innerText(), /33\.509,00/);
-  assert.match(await page.locator('.cash-shortfall').innerText(), /47\.783,00/);
-  assert.match(await page.locator('.cash-shortfall').innerText(), /12\.783,00/);
+  assert.match(await page.locator('#loan-summary').innerText(), /161\.490,75/);
+  assert.match(await page.locator('#cash-breakdown').innerText(), /33\.509,25/);
+  assert.match(await page.locator('.cash-shortfall').innerText(), /47\.783,25/);
+  assert.match(await page.locator('.cash-shortfall').innerText(), /12\.783,25/);
   assert.match(await page.locator('#installment-note').innerText(), /165\.750,00/);
 
   await page.locator('#property-price').fill('120000');
@@ -93,7 +117,10 @@ try {
   for (const technicalKey of ['uiUyu', 'teaPercent', 'savingsUsd', 'maxLoanUsd', 'financingLimitBasis']) assert.doesNotMatch(settingsText, new RegExp(technicalKey));
   assert.match(settingsText, /Ahorros disponibles/);
   assert.match(settingsText, /Tasas por monto solicitado/);
-  assert.equal(await page.locator('#config-field-9').inputValue(), '1.414872');
+  assert.equal(await page.locator('#config-field-9').inputValue(), '1.415');
+  assert.match(await page.locator('#config-field-8-description').innerText(), /menos de USD 30\.000.*1,5% con tope de USD 1\.500/);
+  assert.match(await page.locator('#config-field-8-description').innerText(), /no publica una tarifa general para compra.*USD 850/);
+  assert.doesNotMatch(await page.locator('.settings-card').innerText(), /primera captura|la captura indica/i);
   assert.match(await page.locator('.quotation-source-card').innerText(), /datos\s*Uruguay/);
   assert.equal(await page.locator('.quotation-source-card .datauruguay-brand-link').getAttribute('href'), 'https://datosuruguay.com/api');
   assert.equal(await page.locator('.quotation-source-links a').count(), 2);
@@ -135,7 +162,7 @@ try {
   assert.equal(await page.locator('.tier-editor').nth(0).locator('tbody tr').count(), 2);
   invalidUiResponse = false;
   assert.match(await page.locator('.settings-aside').innerText(), /Editá los valores que quieras/);
-  assert.match(await page.locator('.bottom-note').innerText(), /Los valores por defecto provienen de simulación de créditos hipotecarios en la web/);
+  assert.match(await page.locator('.bottom-note').innerText(), /Los resultados son orientativos/);
 
   const savingsInput = page.locator('#config-field-0');
   await savingsInput.fill('42000');
@@ -145,7 +172,7 @@ try {
   await page.locator('#nav-calculator').click();
   assert.match(await page.locator('.savings-line').innerText(), /USD 42\.000,00/);
   const changedMaximum = await page.locator('#maximum-property-price').innerText();
-  assert.notEqual(changedMaximum, 'USD 141.142,53');
+  assert.notEqual(changedMaximum, 'USD 141.141,77');
   await page.reload();
   assert.match(await page.locator('.savings-line').innerText(), /USD 42\.000,00/);
 

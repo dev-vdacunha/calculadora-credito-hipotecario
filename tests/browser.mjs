@@ -58,6 +58,44 @@ try {
   assert.equal(await page.locator('.term-payment > strong').count(), 5);
   assert.match(await page.locator('.term-payment').first().innerText(), /Otros débitos, primer mes/);
 
+  // Exact amounts commit on Enter/blur, preserve focus and reject invalid drafts.
+  const exact = page.getByLabel('Monto del préstamo (USD)', { exact: true });
+  assert.equal(await exact.count(), 1, 'Exact loan amount control is available');
+  await exact.fill('100050.25');
+  assert.match(await page.locator('.loan-amount').innerText(), /140\.250,00/);
+  await exact.press('Enter');
+  assert.match(await page.locator('.loan-amount').innerText(), /100\.050,25/);
+  assert.equal(await exact.evaluate(el => el === document.activeElement), true);
+  const markerX = Number(await page.locator('#loan-chart-selection').getAttribute('cx'));
+  assert.ok(markerX > 540 && markerX < 560, 'Off-step amount is positioned on the chart');
+  for (const invalid of ['', '19999', '165000.01', '100050.251']) {
+    await exact.fill(invalid);
+    await exact.press('Enter');
+    assert.equal(await exact.getAttribute('aria-invalid'), 'true');
+    assert.match(await page.locator('.loan-amount').innerText(), /100\.050,25/);
+  }
+  await exact.fill('99999.99');
+  await exact.press('Tab');
+  assert.match(await page.locator('#loan-summary .pill').innerText(), /4,75%/);
+  assert.equal(await exact.getAttribute('aria-invalid'), 'false');
+  const slider = page.locator('#loan-amount-control');
+  await slider.focus();
+  await slider.press('End');
+  assert.equal(Number(await exact.inputValue()), 165000);
+  await slider.press('Home');
+  assert.equal(Number(await exact.inputValue()), 20000);
+  await slider.press('ArrowRight');
+  assert.equal(Number(await exact.inputValue()), 20100);
+  for (const [draft, key, expected] of [['164999.99', 'End', 165000], ['20000.01', 'Home', 20000], ['99999.99', 'ArrowRight', 100000], ['100000.01', 'ArrowLeft', 100000]]) {
+    await exact.fill(draft);
+    await exact.press('Enter');
+    await slider.focus();
+    await slider.press(key);
+    assert.equal(Number(await exact.inputValue()), expected, `${key} from ${draft}`);
+  }
+
+  assert.equal(await slider.evaluate(el => el === document.activeElement), true);
+
   await page.locator('#property-price').fill('120000');
   assert.match(await page.locator('.loan-amount').innerText(), /97\.000,00/);
   assert.match(await page.locator('#loan-summary').innerText(), /USD 102\.000,00/);
@@ -118,7 +156,7 @@ try {
   assert.match(settingsText, /Ahorros disponibles/);
   assert.match(settingsText, /Tasas por monto solicitado/);
   assert.equal(await page.locator('#config-field-9').inputValue(), '1.415');
-  assert.match(await page.locator('#config-field-8-description').innerText(), /menos de USD 30\.000.*1,5% con tope de USD 1\.500/);
+  assert.match(await page.locator('#config-field-8-description').innerText(), /montos menores a USD 30\.000.*1,5% con tope de USD 1\.500/);
   assert.match(await page.locator('#config-field-8-description').innerText(), /no publica una tarifa general para compra.*USD 850/);
   assert.doesNotMatch(await page.locator('.settings-card').innerText(), /primera captura|la captura indica/i);
   assert.match(await page.locator('.quotation-source-card').innerText(), /datos\s*Uruguay/);
@@ -191,18 +229,78 @@ try {
   assert.equal(await page.evaluate(() => localStorage.getItem('calculadora-credito-hipotecario.config.v1')), null);
 
   await mkdir('test-results', { recursive: true });
-  for (const width of [320, 390, 768, 1440]) {
+  for (const width of [320, 390, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
     await page.locator('#nav-calculator').click();
+    await page.locator('#property-price').waitFor();
+    assert.equal(await page.locator('.calculator-grid').evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').length), width < 900 ? 1 : 2);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Calculator overflow ${width}`);
-    if (width === 390 || width === 1440) await page.screenshot({ path: `test-results/calculator-${width}.png`, fullPage: true });
+    await page.screenshot({ path: `test-results/calculator-${width}.png`, fullPage: true });
     await page.locator('#nav-settings').click();
     await page.locator('.setting-row').first().waitFor();
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Settings overflow ${width}`);
-    if (width === 390) await page.screenshot({ path: 'test-results/settings-390.png', fullPage: true });
+    await page.screenshot({ path: `test-results/settings-${width}.png`, fullPage: true });
   }
+  // Real pointer dragging, graph separation and keyboard operation at phone width.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('#nav-calculator').click();
+  await slider.waitFor();
+  await slider.scrollIntoViewIfNeeded();
+  const track = await slider.boundingBox();
+  const graph = await page.locator('.loan-chart-wrap').boundingBox();
+  assert.ok(track.height >= 44 && graph.y + graph.height <= track.y);
+  await slider.focus();
+  await slider.press('Home');
+  const scrollBefore = await page.evaluate(() => scrollY);
+  await page.mouse.move(track.x + 14, track.y + track.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(track.x + track.width * .7, track.y + track.height / 2, { steps: 12 });
+  await page.mouse.up();
+  assert.ok(Number(await exact.inputValue()) > 100000);
+  assert.ok(Math.abs(await page.evaluate(() => scrollY) - scrollBefore) < 2, 'Drag preserves scroll');
+  await page.locator('#loan-control-panel').screenshot({ path: 'test-results/loan-control-mobile.png' });
+  const markerBounds = await page.locator('#loan-chart-selection').boundingBox();
+  assert.ok(Math.abs(markerBounds.width - 12) < .2 && Math.abs(markerBounds.height - 12) < .2, `Selection marker remains a 12px circle including its border: ${JSON.stringify(markerBounds)}`);
+
+  await page.locator('#property-price').fill('1000000000000');
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Large amounts fit');
+  await page.locator('#property-price').fill('10000');
+  assert.equal(await exact.count(), 0);
+  assert.match(await page.locator('#loan-summary').innerText(), /Tus ahorros cubren la compra/);
+
+  // A mobile context exercises Chromium touch input, not a synthetic input event.
+  const mobile = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const touchPage = await mobile.newPage();
+  await touchPage.goto(page.url().split('#')[0]);
+  const touchSlider = touchPage.locator('#loan-amount-control');
+  await touchSlider.scrollIntoViewIfNeeded();
+  const touchTrack = await touchSlider.boundingBox();
+  await touchPage.touchscreen.tap(touchTrack.x + 15, touchTrack.y + 24);
+  assert.ok(Number(await touchPage.locator('#loan-amount-exact').inputValue()) < 30000);
+  const cdp = await mobile.newCDPSession(touchPage);
+  const point = { x: touchTrack.x + 15, y: touchTrack.y + 24 };
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
+  for (let step = 1; step <= 10; step++) {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: point.x + (touchTrack.width - 30) * step / 10, y: point.y }] });
+  }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  assert.ok(Number(await touchPage.locator('#loan-amount-exact').inputValue()) > 150000);
+  await touchPage.locator('#nav-settings').click();
+  await touchPage.locator('#config-field-0').fill('0');
+  await touchPage.locator('#nav-calculator').click();
+  await touchPage.locator('#property-price').fill('20000');
+  await touchPage.locator('#loan-amount-exact').fill('20000');
+  await touchPage.locator('#loan-amount-exact').press('Enter');
+  await touchSlider.focus();
+  await touchSlider.press('End');
+  assert.equal(Number(await touchPage.locator('#loan-amount-exact').inputValue()), 20000);
+  assert.equal(await touchPage.locator('#loan-chart-selection').getAttribute('cx'), '0.00');
+  await touchPage.locator('#property-price').fill('19999');
+  assert.equal(await touchSlider.count(), 0);
+  assert.match(await touchPage.locator('#loan-summary').innerText(), /No hay un monto válido/);
+  await mobile.close();
   assert.deepEqual(errors, []);
-  console.log('Browser checks passed: exact copy, dynamic 85% loan, local overrides, reload/reset/invalid settings, GitHub link, currency cycling and widths 320/390/768/1440.');
+  console.log('Browser checks passed: exact copy, dynamic 85% loan, local overrides, reload/reset/invalid settings, GitHub link, currency cycling and exact amounts, mouse/touch dragging and widths 320/390/768/1024/1440.');
 } finally {
   await browser.close();
   await new Promise(resolve => server.close(resolve));

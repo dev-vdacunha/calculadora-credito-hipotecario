@@ -62,7 +62,7 @@ function renderCalculator() {
         <div class="reference-note">${icon('info')}<p>La simulación incluye honorarios y cargos según la configuración elegida. <a href="#configuracion">Ver configuración</a></p></div>
       </div>
       <div class="right-column">
-        <section id="loan-summary" class="loan-card" aria-label="Resumen del préstamo" aria-live="polite"><div id="loan-summary-result"></div><div id="loan-control-panel"></div></section>
+        <section id="loan-summary" class="loan-card" aria-label="Resumen del préstamo"><div id="loan-summary-result"></div><div id="loan-control-panel"></div></section>
         <section class="card installments-card" aria-labelledby="installments-title">
           <div class="section-top"><span class="step">03</span><h2 id="installments-title">Valor mensual de las cuotas</h2></div>
           <div class="installments-toolbar"><p>Primera cuota mensual estimada</p><div class="currency-switch" role="group" aria-label="Moneda de las cuotas"><button id="currency-prev" type="button" aria-label="Moneda anterior">${icon('arrow', 'reversed')}</button><span id="currency-label" aria-live="polite">UYU</span><button id="currency-next" type="button" aria-label="Moneda siguiente">${icon('arrow')}</button></div></div>
@@ -170,6 +170,30 @@ function financingWarning(r) {
   return 'La cartilla publica hasta 95% para ciertos perfiles (25–45 años, profesional universitario e inmueble de hasta USD 200.000), sujeto a condiciones y tasación. La simulación no evalúa elegibilidad.';
 }
 
+// Interpolate between existing slider stops so exact amounts share the same axis.
+function loanControlIndex(amount, curve) {
+  const upper = curve.points.findIndex(point => point.grossLoanUsd >= amount);
+  if (upper <= 0) return upper < 0 ? curve.points.length - 1 : 0;
+  const lowerAmount = curve.points[upper - 1].grossLoanUsd;
+  return upper - 1 + (amount - lowerAmount) / (curve.points[upper].grossLoanUsd - lowerAmount);
+}
+
+function sizeLoanChartMarkers() {
+  const chart = document.querySelector('.loan-chart');
+  if (!chart) return;
+  const { width, height } = chart.getBoundingClientRect();
+  if (!width || !height) return;
+  chart.querySelectorAll('[data-radius]').forEach(marker => {
+    const radius = Number(marker.dataset.radius);
+    marker.setAttribute('rx', String(radius * 1000 / width));
+    marker.setAttribute('ry', String(radius * 64 / height));
+  });
+}
+
+// SVG axes stretch independently; keep the markers circular at every card width.
+const loanChartResize = new ResizeObserver(sizeLoanChartMarkers);
+loanChartResize.observe(main);
+
 function renderLoanControl(r, curve) {
   const panel = document.querySelector('#loan-control-panel');
   if (!panel || r.status === 'cash') { if (panel) panel.innerHTML = ''; return; }
@@ -178,7 +202,7 @@ function renderLoanControl(r, curve) {
     return;
   }
 
-  const selectedIndex = Math.max(0, curve.points.findIndex(point => point.grossLoanUsd === r.grossLoan));
+  const selectedIndex = loanControlIndex(r.grossLoan, curve);
   const standardIndex = curve.points.findIndex(point => point.grossLoanUsd >= curve.standardMaximum);
   const minimumIndex = curve.points.findIndex(point => point.grossLoanUsd === curve.minimum.grossLoanUsd);
   const standardPosition = curve.points.length <= 1 || standardIndex < 0 ? 0 : standardIndex / (curve.points.length - 1) * 100;
@@ -193,7 +217,7 @@ function renderLoanControl(r, curve) {
     const index = curve.points.findIndex(point => point.grossLoanUsd >= tier.minLoanUsd);
     if (index < 0) return '';
     const x = xFor(index);
-    return `<line class="loan-chart-tier" x1="${x.toFixed(2)}" x2="${x.toFixed(2)}" y1="8" y2="58"/><circle class="loan-chart-tier-dot" cx="${x.toFixed(2)}" cy="${yFor(curve.points[index].monthlyPaymentUsd).toFixed(2)}" r="3"/>`;
+    return `<line class="loan-chart-tier" x1="${x.toFixed(2)}" x2="${x.toFixed(2)}" y1="8" y2="58"/><ellipse data-radius="3" class="loan-chart-tier-dot" cx="${x.toFixed(2)}" cy="${yFor(curve.points[index].monthlyPaymentUsd).toFixed(2)}" r="3"/>`;
   }).join('');
   const minPoint = curve.minimum;
   const minPointIndex = minimumIndex < 0 ? 0 : minimumIndex;
@@ -205,19 +229,66 @@ function renderLoanControl(r, curve) {
   panel.innerHTML = `
     <div class="loan-control-heading"><label for="loan-amount-control">Ajustar monto del préstamo</label><span>Pasos de USD ${number(LOAN_STEP_USD)}</span></div>
     <p id="loan-slider-description" class="loan-slider-description">Mové la perilla para comparar el efectivo y las cuotas. El gráfico muestra la primera cuota estimada a 15 años.</p>
+    <div class="loan-exact-control">
+      <label for="loan-amount-exact">Monto del préstamo (USD)</label>
+      <input id="loan-amount-exact" type="number" inputmode="decimal" min="${MIN_LOAN_USD}" max="${curve.simulationMaximum}" step="0.01" value="${r.grossLoan}" aria-describedby="loan-exact-help loan-exact-error" aria-invalid="false" />
+      <p id="loan-exact-help">Aplicá el monto con Enter o al salir del campo.</p>
+      <p id="loan-exact-error" class="input-error" role="alert"></p>
+    </div>
     <div class="loan-chart-wrap">
-      <svg class="loan-chart" viewBox="0 0 1000 64" preserveAspectRatio="none" role="img" aria-label="Curva de la cuota mensual estimada a 15 años según el monto del préstamo">${boundary}<path class="loan-chart-line" d="${path}"/>${tierMarkers}<circle class="loan-chart-minimum" cx="${xFor(minPointIndex).toFixed(2)}" cy="${yFor(minPoint.monthlyPaymentUsd).toFixed(2)}" r="4"/><circle id="loan-chart-selection" class="loan-chart-selection" cx="${xFor(selectedIndex).toFixed(2)}" cy="${yFor(selectedInstallment).toFixed(2)}" r="5"/></svg>
-      <input id="loan-amount-control" type="range" min="0" max="${curve.points.length - 1}" step="1" value="${selectedIndex}" style="--standard-position:${standardPosition.toFixed(2)}%" aria-label="Monto bruto del vale" aria-describedby="loan-slider-description loan-slider-status" />
+      <svg class="loan-chart" viewBox="0 0 1000 64" preserveAspectRatio="none" role="img" aria-label="Curva de la cuota mensual estimada a 15 años según el monto del préstamo">${boundary}<path class="loan-chart-line" d="${path}"/>${tierMarkers}<ellipse data-radius="4" class="loan-chart-minimum" cx="${xFor(minPointIndex).toFixed(2)}" cy="${yFor(minPoint.monthlyPaymentUsd).toFixed(2)}" r="4"/><ellipse data-radius="5" id="loan-chart-selection" class="loan-chart-selection" cx="${xFor(selectedIndex).toFixed(2)}" cy="${yFor(selectedInstallment).toFixed(2)}" r="5"/></svg>
+    </div>
+    <div class="loan-slider-wrap">
+      <input id="loan-amount-control" type="range" min="0" max="${curve.points.length - 1}" step="1" value="${Math.round(selectedIndex)}" style="--standard-position:${standardPosition.toFixed(2)}%" aria-label="Monto bruto del vale" aria-describedby="loan-slider-description loan-slider-status" />
     </div>
     <div class="loan-range-labels"><span>${usd(MIN_LOAN_USD)}</span><span class="loan-standard-label">${standardLabel}</span><span>${maxLabel}</span></div>
     <p class="loan-tier-legend">Franjas TEA: ${teaRanges}</p>
     <p class="loan-curve-legend">Cuota menor en el rango: <strong>${usd(minPoint.monthlyPaymentUsd)}</strong> con un vale de <strong>${usd(minPoint.grossLoanUsd)}</strong>. Incluye seguro de vida; otros débitos se muestran aparte.</p>
     <p id="loan-slider-status" class="loan-slider-status" aria-live="polite">Monto elegido: ${usd(r.grossLoan)} · ${number(r.teaPercent, 2)}% TEA · cuota a 15 años: ${usd(selectedInstallment)}</p>`;
+  sizeLoanChartMarkers();
   panel.dataset.yMin = String(yMin);
   panel.dataset.yMax = String(yMax);
-  panel.querySelector('#loan-amount-control').addEventListener('input', event => {
-    selectedLoanAmount = curve.points[Number(event.target.value)].grossLoanUsd;
+  panel.querySelector('#loan-amount-control').setAttribute('aria-valuetext', `${usd(r.grossLoan)} del vale, ${number(r.teaPercent, 2)}% TEA`);
+  const exact = panel.querySelector('#loan-amount-exact');
+  const exactError = panel.querySelector('#loan-exact-error');
+  const commitExact = () => {
+    const amount = exact.valueAsNumber;
+    if (!exact.value || !Number.isFinite(amount) || !exact.validity.valid) {
+      exact.setAttribute('aria-invalid', 'true');
+      exactError.textContent = `Ingresá un monto entre ${usd(MIN_LOAN_USD)} y ${usd(curve.simulationMaximum)}, con hasta dos decimales.`;
+      return;
+    }
+    exact.setAttribute('aria-invalid', 'false');
+    exactError.textContent = '';
+    selectedLoanAmount = amount;
     updateResults(true);
+  };
+  exact.addEventListener('blur', commitExact);
+  exact.addEventListener('keydown', event => {
+    if (event.key === 'Enter') { event.preventDefault(); commitExact(); }
+  });
+  const slider = panel.querySelector('#loan-amount-control');
+  const selectStop = index => {
+    selectedLoanAmount = curve.points[Math.max(0, Math.min(curve.points.length - 1, index))].grossLoanUsd;
+    exact.value = String(selectedLoanAmount);
+    exact.setAttribute('aria-invalid', 'false');
+    exactError.textContent = '';
+    updateResults(true);
+  };
+  slider.addEventListener('input', event => selectStop(Number(event.target.value)));
+  slider.addEventListener('keydown', event => {
+    // Native range indices are rounded; move from the exact amount instead.
+    const index = loanControlIndex(selectedLoanAmount, curve);
+    const destinations = {
+      ArrowLeft: Math.ceil(index) - 1, ArrowDown: Math.ceil(index) - 1,
+      ArrowRight: Math.floor(index) + 1, ArrowUp: Math.floor(index) + 1,
+      Home: 0, End: curve.points.length - 1,
+      PageDown: Math.ceil(index) - 10, PageUp: Math.floor(index) + 10,
+    };
+    if (event.key in destinations) {
+      event.preventDefault();
+      selectStop(destinations[event.key]);
+    }
   });
 }
 
@@ -225,9 +296,8 @@ function updateLoanControlPosition(r, curve) {
   const panel = document.querySelector('#loan-control-panel');
   const input = panel?.querySelector('#loan-amount-control');
   if (!input || !curve.points.length) { renderLoanControl(r, curve); return; }
-  const index = Math.max(0, curve.points.findIndex(point => point.grossLoanUsd === r.grossLoan));
-  input.value = String(index);
-  const point = curve.points[index];
+  const index = loanControlIndex(r.grossLoan, curve);
+  input.value = String(Math.round(index));
   const selectedInstallment = r.installments.find(item => item.years === 15)?.total ?? 0;
   const min = Number(panel.dataset.yMin);
   const max = Number(panel.dataset.yMax);
@@ -274,8 +344,8 @@ function tierControl(field, value, index) {
   const rows = value.map((tier, tierIndex) => {
     const secondKey = isRate ? 'annualRatePercent' : 'percent';
     const secondValue = tier[secondKey];
-    const cap = isRate ? '' : `<td><input class="tier-field" type="number" inputmode="decimal" data-tier-field="capUsd" data-tier-index="${tierIndex}" value="${tier.capUsd ?? ''}" min="0" step="0.01" aria-label="Tope del tramo ${tierIndex + 1}" placeholder="Sin tope" /></td>`;
-    return `<tr><td><input class="tier-field" type="number" inputmode="decimal" data-tier-field="minLoanUsd" data-tier-index="${tierIndex}" value="${tier.minLoanUsd}" min="0" step="0.01" aria-label="Desde dólares del tramo ${tierIndex + 1}" /></td><td><input class="tier-field" type="number" inputmode="decimal" data-tier-field="${secondKey}" data-tier-index="${tierIndex}" value="${secondValue}" min="0" step="0.01" aria-label="${isRate ? 'TEA' : 'Porcentaje'} del tramo ${tierIndex + 1}" /></td>${cap}<td><button class="tier-remove" type="button" data-tier-action="remove" data-tier-index="${tierIndex}" ${value.length === 1 ? 'disabled' : ''} aria-label="Eliminar tramo ${tierIndex + 1}">×</button></td></tr>`;
+    const cap = isRate ? '' : `<td data-label="Tope (USD)"><input class="tier-field" type="number" inputmode="decimal" data-tier-field="capUsd" data-tier-index="${tierIndex}" value="${tier.capUsd ?? ''}" min="0" step="0.01" aria-label="Tope del tramo ${tierIndex + 1}" placeholder="Sin tope" /></td>`;
+    return `<tr><td data-label="Desde (USD)"><input class="tier-field" type="number" inputmode="decimal" data-tier-field="minLoanUsd" data-tier-index="${tierIndex}" value="${tier.minLoanUsd}" min="0" step="0.01" aria-label="Desde dólares del tramo ${tierIndex + 1}" /></td><td data-label="${isRate ? 'TEA (%)' : 'Porcentaje (%)'}"><input class="tier-field" type="number" inputmode="decimal" data-tier-field="${secondKey}" data-tier-index="${tierIndex}" value="${secondValue}" min="0" step="0.01" aria-label="${isRate ? 'TEA' : 'Porcentaje'} del tramo ${tierIndex + 1}" /></td>${cap}<td class="tier-actions"><button class="tier-remove" type="button" data-tier-action="remove" data-tier-index="${tierIndex}" ${value.length === 1 ? 'disabled' : ''} aria-label="Eliminar tramo ${tierIndex + 1}">×</button></td></tr>`;
   }).join('');
   return `<div class="tier-editor" data-tier-editor-index="${index}" data-tier-type="${field.type}" aria-describedby="config-field-${index}-description config-field-${index}-error"><table><thead><tr><th>Desde (USD)</th><th>${isRate ? 'TEA (%)' : 'Porcentaje (%)'}</th>${isRate ? '' : '<th>Tope (USD)</th>'}<th><span class="sr-only">Acciones</span></th></tr></thead><tbody>${rows}</tbody></table><button class="tier-add" type="button" data-tier-action="add">Agregar tramo</button><p class="config-error" id="config-field-${index}-error" role="alert"></p></div>`;
 }
@@ -338,7 +408,7 @@ function renderSettings() {
     return `<section class="settings-section"><h2>${escape(section)}</h2><div class="settings-section-card">${fields.map(field => {
       const index = configFields.indexOf(field);
       const error = field.type === 'rate-tiers' || field.type === 'fee-tiers' ? '' : `<p class="config-error" id="config-field-${index}-error" role="alert"></p>`;
-      return `<div class="setting-row"><div class="setting-copy"><label for="config-field-${index}">${escape(field.label)}</label><p id="config-field-${index}-description">${escape(field.description)}</p>${error}</div><div class="setting-control">${configControl(field, effectiveConfig[field.key], index)}</div></div>`;
+      return `<div class="setting-row${field.type.endsWith('tiers') ? ' setting-row-tiers' : ''}"><div class="setting-copy">${field.type.endsWith('tiers') ? `<h3>${escape(field.label)}</h3>` : `<label for="config-field-${index}">${escape(field.label)}</label>`}<p id="config-field-${index}-description">${escape(field.description)}</p>${error}</div><div class="setting-control">${configControl(field, effectiveConfig[field.key], index)}</div></div>`;
     }).join('')}</div></section>`;
   }).join('');
   main.innerHTML = `<section class="intro settings-intro"><p class="eyebrow">LAS BASES DE TU SIMULACIÓN</p><h1>Cada número,<br>en su lugar<span>.</span></h1><p>Estos son los valores que usa tu calculadora.</p></section>

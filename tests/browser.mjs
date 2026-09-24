@@ -29,6 +29,15 @@ try {
   page.on('pageerror', e => errors.push(e.message));
   await page.goto(`http://127.0.0.1:${server.address().port}/calculadora/`);
   await page.locator('#property-price').waitFor();
+  let invalidUiResponse = false;
+  await page.route('https://datosuruguay.com/api/v1/indexed-units/ui?limit=1', route => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ data: [{ date: invalidUiResponse ? 'not-a-date' : '2026-09-24', value: 6.6537 }], meta: { source: 'BCU', unit: 'UYU/UI' } }),
+  }));
+  await page.route('https://datosuruguay.com/api/v1/exchange-rates/usd?limit=1', route => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ data: [{ date: '2026-09-23', value: 40.049 }], meta: { source: 'BCU', unit: 'UYU/USD' } }),
+  }));
 
   assert.equal(await page.locator('#property-title').innerText(), 'Ingresar el valor del inmueble');
   assert.equal(await page.locator('#cash-title').innerText(), 'Capital necesario para la hipoteca');
@@ -74,6 +83,28 @@ try {
   assert.match(settingsText, /Ahorros disponibles/);
   assert.match(settingsText, /Tasa efectiva anual/);
   assert.equal(await page.locator('#config-field-9').inputValue(), '1.414872');
+  assert.match(await page.locator('.quotation-source-card').innerText(), /Datos Uruguay/);
+  assert.equal(await page.locator('.quotation-source-card a').getAttribute('href'), 'https://datosuruguay.com/api');
+  assert.equal(await page.locator('#config-field-6').evaluate(el => getComputedStyle(el).textAlign), 'right');
+  assert.equal(await page.locator('#config-field-7').evaluate(el => getComputedStyle(el).textAlign), 'right');
+  await page.getByRole('button', { name: 'Actualizar desde Datos Uruguay' }).nth(0).click();
+  await page.waitForFunction(() => document.querySelector('[data-quotation-status="uiUyu"]').textContent.includes('24/09/2026'));
+  assert.equal(await page.locator('#config-field-6').inputValue(), '6.6537');
+  assert.match(await page.locator('[data-quotation-status="uiUyu"]').innerText(), /24\/09\/2026/);
+  assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('calculadora-credito-hipotecario.config.v1'))), { uiUyu: 6.6537 });
+  await page.getByRole('button', { name: 'Actualizar desde Datos Uruguay' }).nth(1).click();
+  await page.waitForFunction(() => document.querySelector('[data-quotation-status="usdUyu"]').textContent.includes('23/09/2026'));
+  assert.equal(await page.locator('#config-field-7').inputValue(), '40.049', await page.locator('[data-quotation-status="usdUyu"]').innerText());
+  assert.match(await page.locator('[data-quotation-status="usdUyu"]').innerText(), /23\/09\/2026/);
+  assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('calculadora-credito-hipotecario.config.v1'))), { uiUyu: 6.6537, usdUyu: 40.049 });
+  invalidUiResponse = true;
+  await page.getByRole('button', { name: 'Actualizar desde Datos Uruguay' }).nth(0).click();
+  await page.waitForFunction(() => document.querySelector('[data-quotation-status="uiUyu"]').textContent.includes('no devolvió una cotización válida'));
+  assert.equal(await page.locator('#config-field-6').inputValue(), '6.6537');
+  assert.match(await page.locator('[data-quotation-status="uiUyu"]').innerText(), /fecha/i);
+  await page.locator('#reset-config').click();
+  assert.equal(await page.evaluate(() => localStorage.getItem('calculadora-credito-hipotecario.config.v1')), null);
+  invalidUiResponse = false;
   assert.match(await page.locator('.settings-aside').innerText(), /Editá los valores que quieras/);
   assert.match(await page.locator('.bottom-note').innerText(), /Los valores por defecto provienen de simulación de créditos hipotecarios en la web/);
 

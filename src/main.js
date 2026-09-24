@@ -2,6 +2,7 @@ import './style.css';
 import { config, configFields } from './config.js';
 import { calculate, convert, TERMS, validateConfig, maximumPropertyPrice } from './calculator.js';
 import { readUserConfig, updateUserConfig, resetUserConfig } from './user-config.js';
+import { fetchLatestQuotation, quotationSources } from './quotations.js';
 
 const icons = {
   home: '<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z"/>',
@@ -146,19 +147,26 @@ function configControl(field, value, index) {
   if (field.type === 'select') {
     return `<select id="${id}" data-config-index="${index}" aria-describedby="${descriptionId} ${errorId}">${field.options.map(option => `<option value="${escape(option.value)}" ${option.value === value ? 'selected' : ''}>${escape(option.label)}</option>`).join('')}</select>`;
   }
-  return `<div class="config-input-wrap"><input id="${id}" data-config-index="${index}" type="number" inputmode="decimal" value="${escape(controlValue)}" min="${field.min}"${field.max === undefined ? '' : ` max="${field.max}"`} step="${field.step}" aria-describedby="${descriptionId} ${errorId}" aria-invalid="false" /><span class="config-unit">${escape(field.unit)}</span></div>`;
+  const input = `<div class="config-input-wrap"><input id="${id}" data-config-index="${index}" type="number" inputmode="decimal" value="${escape(controlValue)}" min="${field.min}"${field.max === undefined ? '' : ` max="${field.max}"`} step="${field.step}" aria-describedby="${descriptionId} ${errorId}" aria-invalid="false" /><span class="config-unit">${escape(field.unit)}</span></div>`;
+  if (!quotationSources[field.key]) return input;
+  return `<div class="config-number-control">${input}<button class="refresh-quotation" type="button" data-update-quotation="${field.key}">Actualizar desde Datos Uruguay</button><span class="quotation-update-status" data-quotation-status="${field.key}" role="status" aria-live="polite"></span></div>`;
 }
 
 function renderSettings() {
   main.innerHTML = `<section class="intro settings-intro"><p class="eyebrow">LAS BASES DE TU SIMULACIÓN</p><h1>Cada número,<br>en su lugar<span>.</span></h1><p>Estos son los valores que usa tu calculadora.</p></section>
     <div class="settings-layout"><aside class="settings-aside"><div class="settings-aside-icon">${icon('settings')}</div><h2>Una configuración.<br>Todas tus cuentas.</h2><p>Editá los valores que quieras. Se guardan en este navegador y se aplican enseguida a tus cálculos. Podés volver a los valores predeterminados cuando quieras.</p><p class="storage-note">${escape(userConfig.storageError || 'Tus cambios se guardan solo en este navegador y dispositivo.')}</p><button class="reset-config" id="reset-config" type="button">Restablecer valores predeterminados</button><div id="config-status" class="config-status" role="status" aria-live="polite"></div><a class="back-link" href="#calculadora">${icon('arrow', 'reversed')} Volver a calcular</a></aside>
     <section class="card settings-card" aria-label="Valores de configuración">${configFields.map((field, index) => `<div class="setting-row"><div class="setting-copy"><label for="config-field-${index}">${escape(field.label)}</label><p id="config-field-${index}-description">${escape(field.description)}</p><p class="config-error" id="config-field-${index}-error" role="alert"></p></div><div class="setting-control">${configControl(field, effectiveConfig[field.key], index)}</div></div>`).join('')}</section></div>
+    <section class="quotation-source-card"><div><strong>Cotizaciones desde Datos Uruguay</strong><p>La UI y el dólar usan datos diarios del BCU publicados por Datos Uruguay.</p></div><a href="https://datosuruguay.com/api" target="_blank" rel="noopener noreferrer">Datos Uruguay · atribución CC BY 4.0</a></section>
     <section class="bottom-note">${icon('info')}<p>Los valores por defecto provienen de simulación de créditos hipotecarios en la web</p></section>`;
   document.querySelectorAll('[data-config-index]').forEach(control => {
     const field = configFields[Number(control.dataset.configIndex)];
     const handle = () => saveSetting(field, control);
     control.addEventListener('change', handle);
     if (field.type === 'number') control.addEventListener('input', handle);
+  });
+  document.querySelectorAll('[data-update-quotation]').forEach(button => {
+    const field = configFields.find(item => item.key === button.dataset.updateQuotation);
+    button.addEventListener('click', () => refreshQuotation(field, button));
   });
   document.querySelector('#reset-config').addEventListener('click', () => {
     const error = resetUserConfig();
@@ -169,6 +177,33 @@ function renderSettings() {
     document.querySelector('#reset-config')?.focus();
     announce(error || 'Valores predeterminados restaurados.');
   });
+}
+
+async function refreshQuotation(field, button) {
+  const status = document.querySelector(`[data-quotation-status="${field.key}"]`);
+  const input = document.querySelector(`[data-config-index="${configFields.indexOf(field)}"]`);
+  button.disabled = true;
+  button.setAttribute('aria-busy', 'true');
+  status.textContent = 'Consultando Datos Uruguay…';
+  try {
+    const quote = await fetchLatestQuotation(field.key);
+    const updated = updateUserConfig(config, configFields, userConfig.overrides, field.key, quote.value);
+    userConfig = updated;
+    effectiveConfig = updated.config;
+    configurationError = '';
+    input.value = String(quote.value);
+    input.setAttribute('aria-invalid', 'false');
+    document.querySelector(`#config-field-${configFields.indexOf(field)}-error`).textContent = '';
+    const formattedDate = new Intl.DateTimeFormat('es-UY', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${quote.date}T00:00:00Z`));
+    status.textContent = `Actualizada desde Datos Uruguay · dato del ${formattedDate}.${updated.storageError ? ` ${updated.storageError}` : ''}`;
+    if (!updated.storageError) announce('Cotización actualizada y guardada en este navegador.');
+  } catch (error) {
+    status.textContent = error.message;
+    announce(error.message);
+  } finally {
+    button.disabled = false;
+    button.removeAttribute('aria-busy');
+  }
 }
 
 function announce(message) {

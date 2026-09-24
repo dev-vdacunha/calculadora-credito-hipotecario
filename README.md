@@ -8,6 +8,8 @@ Los valores predeterminados están en **[`src/config.js`](src/config.js)**, dent
 
 Si cambiás un valor desde la pantalla, se aplica enseguida a la calculadora y permanece después de recargar. “Restablecer valores predeterminados” elimina únicamente la configuración de esta aplicación. Cambiar los defaults para todos requiere editar `src/config.js`, hacer commit y publicar un nuevo deploy.
 
+Junto a la UI y el dólar hay botones para actualizarlos manualmente desde las series diarias del BCU que publica [Datos Uruguay](https://datosuruguay.com/api). El valor y su fecha se guardan como overrides locales; si el endpoint falla, se conserva el valor anterior. La atribución visible enlaza a Datos Uruguay; sus datos se publican bajo CC BY 4.0.
+
 ```js
 export const config = Object.freeze({
   savingsUsd: 35000,
@@ -110,6 +112,7 @@ También podés editar `src/config.js` desde la web de GitHub y confirmar el cam
 
 - `src/config.js`: valores predeterminados y metadata de controles.
 - `src/user-config.js`: overrides parciales y persistencia local segura.
+- `src/quotations.js`: descarga y validación de las cotizaciones diarias del BCU vía Datos Uruguay.
 - `src/calculator.js`: fórmulas y validaciones, sin dependencias del DOM.
 - `src/main.js`: pantallas y navegación; estado temporal de precio/moneda.
 - `src/style.css`: diseño responsive y accesibilidad visual.

@@ -4,6 +4,8 @@
 
 La configuración tiene defaults en `src/config.js` y overrides parciales en `localStorage` bajo `calculadora-credito-hipotecario.config.v1`. La pantalla permite editar los doce parámetros activos, muestra solo nombres y descripciones humanas, y ofrece restablecer los defaults. `maxLoanUsd` y `financingLimitBasis` fueron eliminados. El máximo del vale es siempre precio × financiación máxima (85%). Las cuotas se muestran aunque falte efectivo, usando el préstamo máximo disponible.
 
+UI y dólar pueden actualizarse manualmente en Configuración desde los endpoints diarios de Datos Uruguay para las series del BCU. Cada botón solo altera su propia cotización, guarda el override local y muestra la fecha efectiva; ante error se conserva el valor previo. La tarjeta de la fuente proporciona enlace y atribución CC BY 4.0.
+
 ## Ajustes vigentes del 24 de septiembre de 2026
 
 Estas decisiones solicitadas por el usuario reemplazan las reglas anteriores de importe fijo de incendio y bloqueo de cuotas:

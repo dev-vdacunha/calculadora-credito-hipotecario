@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { config } from '../src/config.js';
 import * as calculator from '../src/calculator.js';
 const { calculate, payment, convert, bankBreakdown, validateConfig, maximumPropertyPrice, rateForLoan, originationFee } = calculator;
-const { loanPaymentCurve, initialLoanAmount, MIN_LOAN_USD, MAX_LOAN_USD } = calculator;
+const { loanPaymentCurve, initialLoanAmount, snapLoanAmount, TEA_SNAP_DISTANCE_USD, TEA_SNAP_RELEASE_USD, MIN_LOAN_USD, MAX_LOAN_USD } = calculator;
 const close = (actual, expected, tolerance = 0.005) => assert.ok(Math.abs(actual - expected) < tolerance, `${actual} != ${expected}`);
 const basic = { ...config, originationFeeTiers: [{ minLoanUsd: 0, percent: 0, capUsd: null }], fireInsurancePercent: 0, lifeInsuranceAnnualPercent: 0, regulatoryDebitAnnualPercent: 0, complementaryServiceAnnualPercent: 0 };
 
@@ -228,6 +228,30 @@ test('la curva mensual usa pasos de USD 100, conserva el extremo y aplica los tr
   assert.equal(curve.minimum.grossLoanUsd, 20000);
   assert.equal(curve.points.at(-2).grossLoanUsd, 120000);
   assert.equal(curve.points.at(-1).grossLoanUsd - curve.points.at(-2).grossLoanUsd, 50);
+});
+
+test('la curva incluye cortes de TEA personalizados aunque caigan entre pasos de USD 100', () => {
+  const custom = { ...config, teaTiers: [...config.teaTiers, { minLoanUsd: 100050, annualRatePercent: 3.25 }] };
+  const curve = loanPaymentCurve(120050, custom);
+  const before = curve.points.find(point => point.grossLoanUsd === 100000);
+  const breakpoint = curve.points.find(point => point.grossLoanUsd === 100050);
+  const after = curve.points.find(point => point.grossLoanUsd === 100100);
+  assert.equal(breakpoint.teaPercent, 3.25);
+  assert.equal(before.teaPercent, 3.75);
+  assert.equal(after.teaPercent, 3.25);
+  assert.equal(curve.points.at(-1).grossLoanUsd, 120050);
+});
+
+
+test('el imán atrae hasta USD 1000, retiene hasta 1500 y elige el corte más cercano', () => {
+  assert.equal(TEA_SNAP_DISTANCE_USD, 1000);
+  assert.equal(TEA_SNAP_RELEASE_USD, 1500);
+  const targets = [100050, 140250];
+  assert.deepEqual(snapLoanAmount(101050, targets), { amount: 100050, activeSnapAmount: 100050 });
+  assert.deepEqual(snapLoanAmount(101051, targets), { amount: 101051, activeSnapAmount: null });
+  assert.deepEqual(snapLoanAmount(101550, targets, 100050), { amount: 100050, activeSnapAmount: 100050 });
+  assert.deepEqual(snapLoanAmount(101551, targets, 100050), { amount: 101551, activeSnapAmount: null });
+  assert.deepEqual(snapLoanAmount(101050, [100550, 101550]), { amount: 100550, activeSnapAmount: 100550 });
 });
 
 test('el monto inicial cubre la necesidad según ahorros y respeta el tope estándar', () => {

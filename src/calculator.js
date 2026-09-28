@@ -2,6 +2,8 @@ export const TERMS = Object.freeze([10, 15, 20, 25, 30]);
 export const MIN_LOAN_USD = 20000;
 export const MAX_LOAN_USD = 750000;
 export const LOAN_STEP_USD = 100;
+export const TEA_SNAP_DISTANCE_USD = 1000;
+export const TEA_SNAP_RELEASE_USD = 1500;
 
 function validTierList(tiers, kind) {
   if (!Array.isArray(tiers) || tiers.length === 0) return false;
@@ -72,6 +74,19 @@ function validateSelectedLoan(price, amount) {
   }
 }
 
+/** Atrae el monto hacia el corte TEA más cercano y retiene el imán hasta su distancia de salida. */
+export function snapLoanAmount(amount, breakpoints, activeSnapAmount = null) {
+  if (activeSnapAmount !== null && Math.abs(amount - activeSnapAmount) <= TEA_SNAP_RELEASE_USD) {
+    return { amount: activeSnapAmount, activeSnapAmount };
+  }
+  const nearest = [...breakpoints]
+    .sort((a, b) => Math.abs(a - amount) - Math.abs(b - amount) || a - b)[0];
+  if (nearest !== undefined && Math.abs(nearest - amount) <= TEA_SNAP_DISTANCE_USD) {
+    return { amount: nearest, activeSnapAmount: nearest };
+  }
+  return { amount, activeSnapAmount: null };
+}
+
 /** Cuotas estimadas a 15 años para cada valor seleccionable del control. */
 export function loanPaymentCurve(price, c) {
   validateConfig(c);
@@ -83,6 +98,9 @@ export function loanPaymentCurve(price, c) {
   const amounts = new Set();
   for (let amount = MIN_LOAN_USD; amount <= maximum; amount += LOAN_STEP_USD) amounts.add(amount);
   if (standardCap >= MIN_LOAN_USD && standardCap <= maximum) amounts.add(standardCap);
+  for (const tier of c.teaTiers.slice(1)) {
+    if (tier.minLoanUsd >= MIN_LOAN_USD && tier.minLoanUsd <= maximum) amounts.add(tier.minLoanUsd);
+  }
   amounts.add(maximum);
 
   const points = [...amounts].sort((a, b) => a - b).map(grossLoanUsd => {

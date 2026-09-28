@@ -241,6 +241,91 @@ try {
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Settings overflow ${width}`);
     await page.screenshot({ path: `test-results/settings-${width}.png`, fullPage: true });
   }
+  await page.locator('#nav-calculator').click();
+  await page.locator('#loan-amount-exact').waitFor();
+  // The plotted marker follows a mildly non-linear Y scale without clipping the extrema.
+  const plotYForSelected = async () => page.locator('#loan-chart-selection').evaluate(marker => {
+    const panel = document.querySelector('#loan-control-panel');
+    const status = document.querySelector('#loan-slider-status').textContent;
+    const match = status.match(/cuota a 15 años: USD ([\d.]+,[\d]{2})/i);
+    const value = Number(match[1].replaceAll('.', '').replace(',', '.'));
+    const min = Number(panel.dataset.yMin);
+    const max = Number(panel.dataset.yMax);
+    const normalized = Math.max(0, Math.min(1, (value - min) / (max - min)));
+    return { y: Number(marker.getAttribute('cy')), expected: 58 - Math.pow(normalized, 1.3) * 50 };
+  });
+  await exact.fill('20000');
+  await exact.press('Enter');
+  let plotted = await plotYForSelected();
+  assert.ok(Math.abs(plotted.y - plotted.expected) < .02, JSON.stringify(plotted));
+  assert.ok(plotted.y >= 8 && plotted.y <= 58);
+  await exact.fill('165000');
+  await exact.press('Enter');
+  plotted = await plotYForSelected();
+  assert.ok(Math.abs(plotted.y - plotted.expected) < .02);
+  assert.ok(Math.abs(plotted.y - 8) < .02, 'Maximum payment remains at the plot boundary');
+  assert.match(await page.locator('.loan-chart').getAttribute('aria-label'), /ilustrativa.*no proporcional/i);
+  assert.match(await page.locator('.loan-scale-note').innerText(), /ilustrativas.*no proporcionales/i);
+
+  // A custom breakpoint between regular $100 stops becomes selectable and magnetic only on drag.
+  const snapPage = await browser.newPage({ viewport: { width: 1024, height: 900 } });
+  await snapPage.goto(`http://127.0.0.1:${server.address().port}/calculadora/`);
+  await snapPage.locator('#nav-settings').click();
+  const customBreakpoint = snapPage.locator('.tier-editor').first().locator('[data-tier-field="minLoanUsd"]').nth(1);
+  await customBreakpoint.fill('100050');
+  await customBreakpoint.press('Tab');
+  await snapPage.locator('#nav-calculator').click();
+  const snapSlider = snapPage.locator('#loan-amount-control');
+  await snapSlider.waitFor();
+  await snapSlider.scrollIntoViewIfNeeded();
+  const exactBreakpoint = snapPage.locator('.loan-chart-tier[data-loan-amount]').getAttribute('data-loan-amount');
+  assert.equal(await exactBreakpoint, '100050');
+  const snapTrack = await snapSlider.boundingBox();
+  const snapMax = Number(await snapSlider.getAttribute('max'));
+  const breakpointIndex = Number(await snapSlider.locator('xpath=..').evaluate(el => {
+    const tier = document.querySelector('.loan-chart-tier[data-loan-amount]');
+    return Number(tier.getAttribute('x1')) / 1000 * Number(document.querySelector('#loan-amount-control').max);
+  }));
+  const pointerX = index => snapTrack.x + 14 + index / snapMax * (snapTrack.width - 28);
+  const pointerY = snapTrack.y + snapTrack.height / 2;
+  await snapPage.mouse.move(pointerX(breakpointIndex + 100), pointerY);
+  await snapPage.mouse.down();
+  await snapPage.mouse.move(pointerX(breakpointIndex + 10), pointerY, { steps: 20 });
+  assert.equal(Number(await snapPage.locator('#loan-amount-exact').inputValue()), 100050, 'Drag within $1,000 snaps to the custom TEA breakpoint');
+  assert.match(await snapPage.locator('.loan-snap-feedback').innerText(), /corte de TEA/i);
+  assert.ok(await snapPage.locator('.loan-chart-tier[data-loan-amount="100050"]').evaluate(el => el.classList.contains('is-snapped')));
+  await snapPage.locator('#loan-control-panel').screenshot({ path: 'test-results/loan-snap-tea.png' });
+  await snapPage.mouse.move(pointerX(breakpointIndex + 15), pointerY, { steps: 8 });
+  assert.equal(Number(await snapPage.locator('#loan-amount-exact').inputValue()), 100050, 'Magnet holds within $1,500');
+  await snapPage.mouse.move(pointerX(breakpointIndex + 16), pointerY, { steps: 6 });
+  assert.ok(Number(await snapPage.locator('#loan-amount-exact').inputValue()) > 101550, 'Drag releases beyond $1,500');
+  await snapPage.mouse.up();
+  await snapPage.locator('#loan-amount-exact').fill('100450');
+  await snapPage.locator('#loan-amount-exact').press('Enter');
+  assert.equal(Number(await snapPage.locator('#loan-amount-exact').inputValue()), 100450, 'Exact amount is never magnetized');
+  await snapPage.locator('#loan-amount-control').focus();
+  await snapPage.locator('#loan-amount-control').press('ArrowLeft');
+  assert.notEqual(Number(await snapPage.locator('#loan-amount-exact').inputValue()), 100050, 'Keyboard is not magnetized');
+  const limitLine = snapPage.locator('.loan-chart-limit');
+  assert.equal(await limitLine.getAttribute('data-loan-amount'), '140250');
+  const limitIndex = Number(await limitLine.getAttribute('x1')) / 1000 * snapMax;
+  const limitTrack = await snapSlider.boundingBox();
+  const limitX = index => limitTrack.x + 14 + index / snapMax * (limitTrack.width - 28);
+  const limitY = limitTrack.y + limitTrack.height / 2;
+  await snapPage.mouse.move(limitX(limitIndex + 100), limitY);
+  await snapPage.mouse.down();
+  await snapPage.mouse.move(limitX(limitIndex + 9), limitY, { steps: 20 });
+  assert.equal(Number(await snapPage.locator('#loan-amount-exact').inputValue()), 140250, 'Drag snaps to the standard maximum line');
+  assert.match(await snapPage.locator('.loan-snap-feedback').innerText(), /máximo estándar/i);
+  assert.ok(await limitLine.evaluate(el => el.classList.contains('is-snapped')));
+  await snapPage.locator('#loan-control-panel').screenshot({ path: 'test-results/loan-snap-limit.png' });
+  await snapPage.mouse.move(limitX(limitIndex + 14), limitY, { steps: 8 });
+  assert.equal(Number(await snapPage.locator('#loan-amount-exact').inputValue()), 140250, 'Standard maximum magnet holds within $1,500');
+  await snapPage.mouse.move(limitX(limitIndex + 16), limitY, { steps: 6 });
+  assert.ok(Number(await snapPage.locator('#loan-amount-exact').inputValue()) > 141750, 'Standard maximum magnet releases beyond $1,500');
+  await snapPage.mouse.up();
+  await snapPage.close();
+
   // Real pointer dragging, graph separation and keyboard operation at phone width.
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator('#nav-calculator').click();
@@ -251,13 +336,18 @@ try {
   assert.ok(track.height >= 44 && graph.y + graph.height <= track.y);
   await slider.focus();
   await slider.press('Home');
+  const pointerTrack = await slider.boundingBox();
   const scrollBefore = await page.evaluate(() => scrollY);
-  await page.mouse.move(track.x + 14, track.y + track.height / 2);
+  await page.mouse.move(pointerTrack.x + 14, pointerTrack.y + pointerTrack.height / 2);
   await page.mouse.down();
-  await page.mouse.move(track.x + track.width * .7, track.y + track.height / 2, { steps: 12 });
+  await page.mouse.move(pointerTrack.x + pointerTrack.width * .7, pointerTrack.y + pointerTrack.height / 2, { steps: 12 });
   await page.mouse.up();
-  assert.ok(Number(await exact.inputValue()) > 100000);
+  assert.ok(Number(await exact.inputValue()) > 80000);
   assert.ok(Math.abs(await page.evaluate(() => scrollY) - scrollBefore) < 2, 'Drag preserves scroll');
+  await slider.focus();
+  await slider.press('ArrowRight');
+  assert.equal(await slider.evaluate(el => el.matches(':focus-visible')), true);
+  assert.equal(await slider.evaluate(el => getComputedStyle(el).outlineStyle), 'none');
   await page.locator('#loan-control-panel').screenshot({ path: 'test-results/loan-control-mobile.png' });
   const markerBounds = await page.locator('#loan-chart-selection').boundingBox();
   assert.ok(Math.abs(markerBounds.width - 12) < .2 && Math.abs(markerBounds.height - 12) < .2, `Selection marker remains a 12px circle including its border: ${JSON.stringify(markerBounds)}`);
@@ -268,23 +358,38 @@ try {
   assert.equal(await exact.count(), 0);
   assert.match(await page.locator('#loan-summary').innerText(), /Tus ahorros cubren la compra/);
 
-  // A mobile context exercises Chromium touch input, not a synthetic input event.
+  // A mobile context exercises magnetic touch input, not a synthetic input event.
   const mobile = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const touchPage = await mobile.newPage();
   await touchPage.goto(page.url().split('#')[0]);
+  await touchPage.locator('#nav-settings').click();
+  const touchBreakpoint = touchPage.locator('.tier-editor').first().locator('[data-tier-field="minLoanUsd"]').nth(1);
+  await touchBreakpoint.fill('100050');
+  await touchBreakpoint.press('Tab');
+  await touchPage.locator('#nav-calculator').click();
   const touchSlider = touchPage.locator('#loan-amount-control');
   await touchSlider.scrollIntoViewIfNeeded();
-  const touchTrack = await touchSlider.boundingBox();
+  let touchTrack = await touchSlider.boundingBox();
   await touchPage.touchscreen.tap(touchTrack.x + 15, touchTrack.y + 24);
   assert.ok(Number(await touchPage.locator('#loan-amount-exact').inputValue()) < 30000);
+  await touchSlider.scrollIntoViewIfNeeded();
+  touchTrack = await touchSlider.boundingBox();
+  const touchMax = Number(await touchSlider.getAttribute('max'));
+  const touchBreakpointIndex = Number(await touchPage.locator('.loan-chart-tier[data-loan-amount]').getAttribute('x1')) / 1000 * touchMax;
+  const touchX = index => touchTrack.x + 14 + index / touchMax * (touchTrack.width - 28);
+  const touchY = touchTrack.y + touchTrack.height / 2;
   const cdp = await mobile.newCDPSession(touchPage);
-  const point = { x: touchTrack.x + 15, y: touchTrack.y + 24 };
-  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
-  for (let step = 1; step <= 10; step++) {
-    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: point.x + (touchTrack.width - 30) * step / 10, y: point.y }] });
+  const touchPoint = (x, y) => ({ identifier: 1, x, y });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [touchPoint(touchX(touchBreakpointIndex - 100), touchY)] });
+  for (let step = 1; step <= 15; step++) {
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [touchPoint(touchX(touchBreakpointIndex - 100 + 110 * step / 15), touchY)] });
   }
+  assert.equal(Number(await touchPage.locator('#loan-amount-exact').inputValue()), 100050, 'Touch drag snaps within $1,000');
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [touchPoint(touchX(touchBreakpointIndex + 15), touchY)] });
+  assert.equal(Number(await touchPage.locator('#loan-amount-exact').inputValue()), 100050, 'Touch magnet holds within $1,500');
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [touchPoint(touchX(touchBreakpointIndex + 16), touchY)] });
+  assert.ok(Number(await touchPage.locator('#loan-amount-exact').inputValue()) > 101550, 'Touch magnet releases beyond $1,500');
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-  assert.ok(Number(await touchPage.locator('#loan-amount-exact').inputValue()) > 150000);
   await touchPage.locator('#nav-settings').click();
   await touchPage.locator('#config-field-0').fill('0');
   await touchPage.locator('#nav-calculator').click();

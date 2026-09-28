@@ -1,6 +1,6 @@
 import './style.css';
 import { config, configFields } from './config.js';
-import { calculate, convert, TERMS, validateConfig, maximumPropertyPrice, loanPaymentCurve, initialLoanAmount, MIN_LOAN_USD, MAX_LOAN_USD, LOAN_STEP_USD } from './calculator.js';
+import { calculate, convert, TERMS, validateConfig, maximumPropertyPrice, loanPaymentCurve, initialLoanAmount, MIN_LOAN_USD, MAX_LOAN_USD, LOAN_STEP_USD, snapLoanAmount } from './calculator.js';
 import { readUserConfig, updateUserConfig, resetUserConfig } from './user-config.js';
 import { fetchLatestQuotation, quotationSources } from './quotations.js';
 
@@ -210,14 +210,18 @@ function renderLoanControl(r, curve) {
   const yValues = curve.points.map(point => point.monthlyPaymentUsd);
   const yMin = Math.min(...yValues);
   const yMax = Math.max(...yValues);
-  const yFor = value => yMax === yMin ? 32 : 58 - ((value - yMin) / (yMax - yMin)) * 50;
+  const yFor = value => {
+    if (yMax === yMin) return 32;
+    const normalized = Math.max(0, Math.min(1, (value - yMin) / (yMax - yMin)));
+    return 58 - Math.pow(normalized, 1.3) * 50;
+  };
   const path = curve.points.map((point, index) => `${index ? 'L' : 'M'}${xFor(index).toFixed(2)} ${yFor(point.monthlyPaymentUsd).toFixed(2)}`).join(' ');
-  const boundary = standardIndex >= 0 ? `<rect class="loan-chart-over-limit" x="${xFor(standardIndex).toFixed(2)}" y="0" width="${(1000 - xFor(standardIndex)).toFixed(2)}" height="64"/><line class="loan-chart-limit" x1="${xFor(standardIndex).toFixed(2)}" x2="${xFor(standardIndex).toFixed(2)}" y1="0" y2="64"/>` : '';
+  const boundary = standardIndex >= 0 ? `<rect class="loan-chart-over-limit" x="${xFor(standardIndex).toFixed(2)}" y="0" width="${(1000 - xFor(standardIndex)).toFixed(2)}" height="64"/><line class="loan-chart-limit" data-loan-amount="${curve.standardMaximum}" x1="${xFor(standardIndex).toFixed(2)}" x2="${xFor(standardIndex).toFixed(2)}" y1="0" y2="64"/>` : '';
   const tierMarkers = effectiveConfig.teaTiers.slice(1).map(tier => {
     const index = curve.points.findIndex(point => point.grossLoanUsd >= tier.minLoanUsd);
     if (index < 0) return '';
     const x = xFor(index);
-    return `<line class="loan-chart-tier" x1="${x.toFixed(2)}" x2="${x.toFixed(2)}" y1="8" y2="58"/><ellipse data-radius="3" class="loan-chart-tier-dot" cx="${x.toFixed(2)}" cy="${yFor(curve.points[index].monthlyPaymentUsd).toFixed(2)}" r="3"/>`;
+    return `<line data-loan-amount="${tier.minLoanUsd}" class="loan-chart-tier" x1="${x.toFixed(2)}" x2="${x.toFixed(2)}" y1="8" y2="58"/><ellipse data-radius="3" class="loan-chart-tier-dot" cx="${x.toFixed(2)}" cy="${yFor(curve.points[index].monthlyPaymentUsd).toFixed(2)}" r="3"/>`;
   }).join('');
   const minPoint = curve.minimum;
   const minPointIndex = minimumIndex < 0 ? 0 : minimumIndex;
@@ -225,9 +229,13 @@ function renderLoanControl(r, curve) {
   const standardLabel = `${usd(curve.standardMaximum)} · ${number(effectiveConfig.maxFinancingPercent)}% estándar`;
   const maxLabel = usd(curve.simulationMaximum);
   const selectedInstallment = r.installments.find(item => item.years === 15)?.total ?? 0;
+  const snapTargets = [...new Set([
+    ...effectiveConfig.teaTiers.slice(1).map(tier => tier.minLoanUsd),
+    curve.standardMaximum,
+  ])].filter(amount => curve.points.some(point => point.grossLoanUsd === amount));
 
   panel.innerHTML = `
-    <div class="loan-control-heading"><label for="loan-amount-control">Ajustar monto del préstamo</label><span>Pasos de USD ${number(LOAN_STEP_USD)}</span></div>
+    <div class="loan-control-heading"><label for="loan-amount-control">Ajustar monto del préstamo</label><span id="loan-snap-feedback" class="loan-snap-feedback" role="status" aria-live="polite"></span><span>Pasos de USD ${number(LOAN_STEP_USD)}</span></div>
     <p id="loan-slider-description" class="loan-slider-description">Mové la perilla para comparar el efectivo y las cuotas. El gráfico muestra la primera cuota estimada a 15 años.</p>
     <div class="loan-exact-control">
       <label for="loan-amount-exact">Monto del préstamo (USD)</label>
@@ -236,8 +244,9 @@ function renderLoanControl(r, curve) {
       <p id="loan-exact-error" class="input-error" role="alert"></p>
     </div>
     <div class="loan-chart-wrap">
-      <svg class="loan-chart" viewBox="0 0 1000 64" preserveAspectRatio="none" role="img" aria-label="Curva de la cuota mensual estimada a 15 años según el monto del préstamo">${boundary}<path class="loan-chart-line" d="${path}"/>${tierMarkers}<ellipse data-radius="4" class="loan-chart-minimum" cx="${xFor(minPointIndex).toFixed(2)}" cy="${yFor(minPoint.monthlyPaymentUsd).toFixed(2)}" r="4"/><ellipse data-radius="5" id="loan-chart-selection" class="loan-chart-selection" cx="${xFor(selectedIndex).toFixed(2)}" cy="${yFor(selectedInstallment).toFixed(2)}" r="5"/></svg>
+      <svg class="loan-chart" viewBox="0 0 1000 64" preserveAspectRatio="none" role="img" aria-label="Curva de cuota a 15 años. Las alturas realzan diferencias por TEA y son ilustrativas, no proporcionales">${boundary}<path class="loan-chart-line" d="${path}"/>${tierMarkers}<ellipse data-radius="4" class="loan-chart-minimum" cx="${xFor(minPointIndex).toFixed(2)}" cy="${yFor(minPoint.monthlyPaymentUsd).toFixed(2)}" r="4"/><ellipse data-radius="5" id="loan-chart-selection" class="loan-chart-selection" cx="${xFor(selectedIndex).toFixed(2)}" cy="${yFor(selectedInstallment).toFixed(2)}" r="5"/></svg>
     </div>
+    <p class="loan-scale-note">Las alturas realzan los cambios por TEA; son ilustrativas y no proporcionales.</p>
     <div class="loan-slider-wrap">
       <input id="loan-amount-control" type="range" min="0" max="${curve.points.length - 1}" step="1" value="${Math.round(selectedIndex)}" style="--standard-position:${standardPosition.toFixed(2)}%" aria-label="Monto bruto del vale" aria-describedby="loan-slider-description loan-slider-status" />
     </div>
@@ -251,6 +260,29 @@ function renderLoanControl(r, curve) {
   panel.querySelector('#loan-amount-control').setAttribute('aria-valuetext', `${usd(r.grossLoan)} del vale, ${number(r.teaPercent, 2)}% TEA`);
   const exact = panel.querySelector('#loan-amount-exact');
   const exactError = panel.querySelector('#loan-exact-error');
+  let pointerOrigin = null;
+  let pointerDragging = false;
+  let activeSnapAmount = null;
+  const setSnapFeedback = snapAmount => {
+    const feedback = panel.querySelector('#loan-snap-feedback');
+    const sliderWrap = panel.querySelector('.loan-slider-wrap');
+    const teaLines = [...panel.querySelectorAll('.loan-chart-tier[data-loan-amount]')];
+    const limitLine = panel.querySelector('.loan-chart-limit[data-loan-amount]');
+    const isStandard = snapAmount !== null && Number(limitLine?.dataset.loanAmount) === snapAmount;
+    const matchedTea = teaLines.filter(line => Number(line.dataset.loanAmount) === snapAmount);
+    teaLines.forEach(line => line.classList.toggle('is-snapped', matchedTea.includes(line)));
+    limitLine?.classList.toggle('is-snapped', isStandard);
+    sliderWrap.classList.toggle('is-snapped', snapAmount !== null);
+    if (snapAmount === null) {
+      feedback.textContent = '';
+      return;
+    }
+    const description = matchedTea.length && isStandard
+      ? 'Ajustado al corte de TEA y al máximo estándar'
+      : matchedTea.length ? 'Ajustado al corte de TEA' : 'Ajustado al máximo estándar';
+    feedback.textContent = `${description} · ${usd(snapAmount)}`;
+    teaLines.forEach(line => line.nextElementSibling?.classList.toggle('is-snapped', Number(line.dataset.loanAmount) === snapAmount));
+  };
   const commitExact = () => {
     const amount = exact.valueAsNumber;
     if (!exact.value || !Number.isFinite(amount) || !exact.validity.valid) {
@@ -260,6 +292,8 @@ function renderLoanControl(r, curve) {
     }
     exact.setAttribute('aria-invalid', 'false');
     exactError.textContent = '';
+    activeSnapAmount = null;
+    setSnapFeedback(null);
     selectedLoanAmount = amount;
     updateResults(true);
   };
@@ -275,7 +309,40 @@ function renderLoanControl(r, curve) {
     exactError.textContent = '';
     updateResults(true);
   };
-  slider.addEventListener('input', event => selectStop(Number(event.target.value)));
+  slider.addEventListener('pointerdown', event => {
+    pointerOrigin = event.clientX;
+    pointerDragging = false;
+    activeSnapAmount = null;
+    setSnapFeedback(null);
+  });
+  slider.addEventListener('pointermove', event => {
+    if (pointerOrigin !== null && Math.abs(event.clientX - pointerOrigin) >= 3) pointerDragging = true;
+  });
+  const finishPointer = () => {
+    pointerOrigin = null;
+    pointerDragging = false;
+    activeSnapAmount = null;
+  };
+  slider.addEventListener('pointerup', finishPointer);
+  slider.addEventListener('pointercancel', finishPointer);
+  slider.addEventListener('input', event => {
+    const index = Number(event.target.value);
+    if (!pointerDragging) {
+      activeSnapAmount = null;
+      setSnapFeedback(null);
+      selectStop(index);
+      return;
+    }
+    const rawAmount = curve.points[index].grossLoanUsd;
+    const snap = snapLoanAmount(rawAmount, snapTargets, activeSnapAmount);
+    activeSnapAmount = snap.activeSnapAmount;
+    setSnapFeedback(activeSnapAmount);
+    const selectedIndex = snap.amount === rawAmount ? index : curve.points.findIndex(point => point.grossLoanUsd === snap.amount);
+    if (selectedIndex >= 0) {
+      event.target.value = String(selectedIndex);
+      selectStop(selectedIndex);
+    }
+  });
   slider.addEventListener('keydown', event => {
     // Native range indices are rounded; move from the exact amount instead.
     const index = loanControlIndex(selectedLoanAmount, curve);
@@ -301,7 +368,8 @@ function updateLoanControlPosition(r, curve) {
   const selectedInstallment = r.installments.find(item => item.years === 15)?.total ?? 0;
   const min = Number(panel.dataset.yMin);
   const max = Number(panel.dataset.yMax);
-  const y = max === min ? 32 : 58 - ((selectedInstallment - min) / (max - min)) * 50;
+  const normalized = max === min ? 0.5 : Math.max(0, Math.min(1, (selectedInstallment - min) / (max - min)));
+  const y = max === min ? 32 : 58 - Math.pow(normalized, 1.3) * 50;
   const x = curve.points.length <= 1 ? 0 : index / (curve.points.length - 1) * 1000;
   const marker = panel.querySelector('#loan-chart-selection');
   marker?.setAttribute('cx', x.toFixed(2));

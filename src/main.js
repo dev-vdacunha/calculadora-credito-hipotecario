@@ -3,10 +3,14 @@ import { config, configFields } from './config.js';
 import { calculate, convert, TERMS, validateConfig, maximumPropertyPrice, loanPaymentCurve, initialLoanAmount, MIN_LOAN_USD, MAX_LOAN_USD, LOAN_STEP_USD, snapLoanAmount } from './calculator.js';
 import { readUserConfig, updateUserConfig, resetUserConfig } from './user-config.js';
 import { fetchLatestQuotation, quotationSources } from './quotations.js';
+import { readTheme, saveTheme, storedTheme } from './theme.js';
 
 const icons = {
   home: '<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z"/>',
   settings: '<path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3"/><circle cx="15" cy="17" r="3"/>',
+  calculator: '<rect x="5" y="2.5" width="14" height="19" rx="2"/><path d="M8 7h8M8 11h2m4 0h2M8 15h2m4 0h2M8 19h2m4 0h2"/>',
+  moon: '<path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5 8.5 8.5 0 1 0 20.5 14.2Z"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/>',
   arrow: '<path d="m9 5 7 7-7 7"/>',
   check: '<path d="m5 12 4 4L19 6"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/>',
@@ -36,11 +40,36 @@ const app = document.querySelector('#app');
 app.innerHTML = `
   <header class="site-header"><div class="header-inner">
     <a class="brand" href="#calculadora" aria-label="Calculadora de crédito hipotecario, inicio"><span class="brand-mark">${icon('home')}</span><span class="brand-name">Calculadora de crédito hipotecario</span></a>
-    <nav aria-label="Navegación principal"><a id="nav-calculator" href="#calculadora">Calculadora</a><a id="nav-settings" href="#configuracion">${icon('settings')}<span>Configuración</span></a></nav>
+    <nav aria-label="Navegación principal"><a id="nav-calculator" href="#calculadora">${icon('calculator')}<span>Calculadora</span></a><a id="nav-settings" href="#configuracion">${icon('settings')}<span>Configuración</span></a><button id="theme-toggle" class="theme-toggle" type="button" aria-label="Cambiar tema"></button></nav>
   </div></header>
   <main id="main" tabindex="-1"></main>
   <footer class="site-footer"><a class="github-footer-link" href="https://github.com/dev-vdacunha/calculadora-credito-hipotecario" target="_blank" rel="noopener noreferrer" aria-label="Ver el código fuente en GitHub">${icon('github')}<span>github.com/dev-vdacunha/calculadora-credito-hipotecario</span></a><span>Desarrollado por Víctor da Cunha · 2026</span></footer>`;
 const main = document.querySelector('#main');
+
+const systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
+let themeStorage;
+try { themeStorage = window.localStorage; } catch { themeStorage = null; }
+let themeIsExplicit = storedTheme(themeStorage) !== null;
+
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  document.querySelector('meta[name="theme-color"]').content = theme === 'dark' ? '#182720' : '#153f37';
+  const button = document.querySelector('#theme-toggle');
+  button.innerHTML = icon(theme === 'dark' ? 'sun' : 'moon');
+  button.setAttribute('aria-label', theme === 'dark' ? 'Activar modo claro' : 'Activar modo oscuro');
+  button.setAttribute('aria-pressed', String(theme === 'dark'));
+}
+
+applyTheme(readTheme(themeStorage, systemTheme.matches));
+document.querySelector('#theme-toggle').addEventListener('click', () => {
+  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  applyTheme(next);
+  themeIsExplicit = true;
+  saveTheme(next, themeStorage);
+});
+systemTheme.addEventListener('change', event => {
+  if (!themeIsExplicit) applyTheme(event.matches ? 'dark' : 'light');
+});
 
 function row(label, value, detail = '', cls = '') {
   return `<div class="money-row ${cls}"><div><span>${label}</span>${detail ? `<small>${detail}</small>` : ''}</div><strong>${value}</strong></div>`;

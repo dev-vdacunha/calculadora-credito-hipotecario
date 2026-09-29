@@ -4,13 +4,39 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#153f37" />
-    <meta name="description" content="Calculá tu préstamo hipotecario, el efectivo que necesitás y las cuotas en pesos, UI o dólares." />
+    <meta name="description" content="Calculá cuánto efectivo necesitás y estimá tus cuotas en Uruguay. Simulá tu crédito hipotecario en pesos, UI o dólares." />
     <title>Calculadora de crédito hipotecario</title>
+    <link rel="canonical" href="https://dev-vdacunha.github.io/calculadora-credito-hipotecario/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="es_UY" />
+    <meta property="og:site_name" content="Calculadora de crédito hipotecario" />
+    <meta property="og:title" content="Calculadora de crédito hipotecario" />
+    <meta property="og:description" content="Calculá cuánto efectivo necesitás y estimá tus cuotas en Uruguay." />
+    <meta property="og:url" content="https://dev-vdacunha.github.io/calculadora-credito-hipotecario/" />
+    <meta property="og:image" content="https://dev-vdacunha.github.io/calculadora-credito-hipotecario/social-card.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Calculadora de crédito hipotecario: simulá el efectivo necesario y las cuotas en Uruguay" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Calculadora de crédito hipotecario" />
+    <meta name="twitter:description" content="Calculá cuánto efectivo necesitás y estimá tus cuotas en Uruguay." />
+    <meta name="twitter:image" content="https://dev-vdacunha.github.io/calculadora-credito-hipotecario/social-card.png" />
+    <meta name="twitter:image:alt" content="Calculadora de crédito hipotecario: simulá el efectivo necesario y las cuotas en Uruguay" />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <script>
+      (() => {
+        let saved = null;
+        try { saved = localStorage.getItem('calculadora-credito-hipotecario.theme.v1'); } catch {}
+        document.documentElement.dataset.theme = saved === 'light' || saved === 'dark'
+          ? saved
+          : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      })();
+    </script>
   </head>
   <body>
     <a class="skip-link" href="#main">Ir al contenido</a>
-    <div id="app"></div>
+    <div id="app"><main id="main"><h1>Calculadora de crédito hipotecario</h1><p>Calculá cuánto efectivo necesitás y estimá tus cuotas en Uruguay. Compará préstamos hipotecarios y cuotas en pesos, UI o dólares para planificar la compra de tu vivienda.</p></main></div>
     <noscript>Activá JavaScript para usar la calculadora hipotecaria.</noscript>
     <script type="module" src="./src/main.js"></script>
   </body>

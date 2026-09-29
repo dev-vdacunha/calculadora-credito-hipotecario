@@ -6,6 +6,8 @@
 
 Una página en español para saber cuánto efectivo necesitás para comprar un inmueble y cómo quedarían las cuotas a **10, 15, 20, 25 o 30 años**. Adaptada a celular, con cambio entre UYU, UI y USD mediante flechas.
 
+El botón con ícono a la derecha del menú cambia entre modo claro y oscuro. En la primera visita sigue el tema del dispositivo; después guarda la elección en este navegador, separada de los valores de la calculadora.
+
 ## Configuración y persistencia
 
 Los valores predeterminados están en **[`src/config.js`](src/config.js)**, dentro de `config`. La pantalla Configuración permite editar los valores y guarda solo las diferencias en `localStorage` del navegador actual. La TEA y los gastos de otorgamiento son arrays de tramos editables. No hay base de datos ni sincronización entre dispositivos.
@@ -119,6 +121,14 @@ GitHub Pages es suficiente: esta aplicación es estática. No necesita Vercel ni
 5. Para cambiar los valores predeterminados para todos: editá `src/config.js`, hacé commit y push a `main`. El workflow vuelve a probar y publicar. Los cambios hechos desde la interfaz quedan solo en el navegador donde se hicieron.
 
 También podés editar `src/config.js` desde la web de GitHub y confirmar el cambio en `main`.
+
+## Vista previa e indexación
+
+El HTML inicial contiene el título, el resumen y las etiquetas Open Graph y X. La carátula está en `public/social-card.png`; su fuente editable es `public/social-card.svg`. Si cambiás la URL pública o el dominio, actualizá juntos `index.html` y `public/sitemap.xml` para mantener iguales la URL canónica, la URL compartida, la imagen y el sitemap.
+
+Después de publicar, comprobá que la página, `/social-card.png` y `/sitemap.xml` respondan desde la URL pública. Para facilitar el descubrimiento, verificá la propiedad en [Google Search Console](https://search.google.com/search-console/about) y [Bing Webmaster Tools](https://www.bing.com/webmasters/), y enviá este sitemap: `https://dev-vdacunha.github.io/calculadora-credito-hipotecario/sitemap.xml`. Podés revisar la vista previa con [Facebook Sharing Debugger](https://developers.facebook.com/tools/debug/) y [X Card Validator](https://cards-dev.x.com/validator).
+
+GitHub Pages aloja este proyecto bajo `/calculadora-credito-hipotecario/`. Un `robots.txt` en esa subruta no controla el dominio `dev-vdacunha.github.io`, por lo que el proyecto no publica uno. Los metadatos y el sitemap ayudan a descubrir e interpretar la página, pero ningún buscador garantiza su indexación.
 
 ## Estructura
 
